@@ -14,9 +14,6 @@ import {
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  CreditCard,
-  Banknote,
-  Wallet,
   Check,
   Plus,
   MapPin,
@@ -31,19 +28,16 @@ import * as addressApi from '../services/addressApi';
 import * as orderApi from '../services/orderApi';
 import * as cartApi from '../services/cartApi';
 import * as productApi from '../services/productApi';
-import * as paymentApi from '../services/paymentApi';
+import { showToast } from '../../common/Toast';
 import { Card } from '../../common/Card';
 import { Button } from '../../common/Button';
 import { Loader } from '../../common/Loader';
 import { AddressCard } from '../components/AddressCard';
 import { MapPickerScreen } from '../components/MapPickerScreen';
-import { MobileBankingModal } from '../components/MobileBankingModal';
-import { BankTransferModal } from '../components/BankTransferModal';
-import { CardPaymentModal } from '../components/CardPaymentModal';
 import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { Address } from '../../../shared/types/address.types';
-import { PaymentMethod, PAYMENT_METHOD_LABELS } from '../../../shared/types/order.types';
+import { PaymentMethod } from '../../../shared/types/order.types';
 import { formatCurrency } from '../../../shared/utils/formatters';
 import { getErrorMessage } from '../../../shared/api/apiClient';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
@@ -51,23 +45,24 @@ import { isCuid, resolveValidProductId } from '../../../shared/utils/cuidHelper'
 
 const DELIVERY_CHARGE = 60;
 
-const PAYMENT_ICONS: Record<PaymentMethod, React.ReactNode> = {
-  COD: <Banknote size={20} color="#FFFFFF" />,
-  BKASH: <Wallet size={20} color="#FFFFFF" />,
-  ROCKET: <Wallet size={20} color="#FFFFFF" />,
-  NOGOD: <Wallet size={20} color="#FFFFFF" />,
-  BANK_TRANSFER: <CreditCard size={20} color="#FFFFFF" />,
-  CARD: <CreditCard size={20} color="#FFFFFF" />,
-};
-
 export default function CheckoutScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { items, totalAmount, itemCount, clearAllCart } = useCart();
+  const {
+    items,
+    totalAmount,
+    originalAmount,
+    discountSavings,
+    couponCode,
+    couponDiscount,
+    deliveryCharge,
+    grandTotal,
+    itemCount,
+    clearAllCart,
+  } = useCart();
+
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('BKASH');
-  const [transactionId, setTransactionId] = useState('');
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
@@ -107,8 +102,6 @@ export default function CheckoutScreen() {
   useEffect(() => {
     loadAddresses();
   }, [loadAddresses]);
-
-  const grandTotal = totalAmount + (itemCount > 0 ? DELIVERY_CHARGE : 0);
 
   const handleOpenAddModal = () => {
     setModalMode('SELECT_MODE');
@@ -174,12 +167,7 @@ export default function CheckoutScreen() {
     }
   };
 
-  // Payment Modals State
-  const [selectedOnlineMethod, setSelectedOnlineMethod] = useState<'BKASH' | 'ROCKET' | 'NOGOD' | 'BANK_TRANSFER' | 'CARD'>('BKASH');
-  const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
-  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
-  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
-  const [submittingPayment, setSubmittingPayment] = useState(false);
+
 
   const isValidId = (str?: string) => Boolean(str && typeof str === 'string' && str.trim().length > 0 && !str.startsWith('local_'));
 
@@ -242,8 +230,8 @@ export default function CheckoutScreen() {
       const rawPhone = (selectedAddress.fullName ? selectedAddress.phone : '').replace(/[^0-9+]/g, '') || (selectedAddress.phone || '').trim();
       const cleanPhone = rawPhone.length >= 7 ? rawPhone : '01700000000';
 
-      const finalMethod = chosenMethod || paymentMethod || 'COD';
-      const finalTxId = txId || transactionId || undefined;
+      const finalMethod = chosenMethod || 'COD';
+      const finalTxId = txId || undefined;
 
       const orderPayload: any = {
         paymentMethod: finalMethod,
@@ -294,11 +282,8 @@ export default function CheckoutScreen() {
         lower.includes('expired') ||
         lower.includes('login')
       ) {
-        Alert.alert(
-          'Session Expired',
-          'Your login session has expired. Please log in to complete your order.',
-          [{ text: 'Log In', onPress: () => router.push('/login') }]
-        );
+        showToast('warning', 'Session Expired', 'Your login session has expired. Please log in to complete your order.');
+        router.push('/login');
       } else {
         setError(msg);
       }
@@ -317,67 +302,12 @@ export default function CheckoutScreen() {
       return;
     }
     setError('');
-
-    // Single payment system: Mobile Banking
-    const targetMethod = (['BKASH', 'ROCKET', 'NOGOD'].includes(paymentMethod) ? paymentMethod : 'BKASH') as 'BKASH' | 'ROCKET' | 'NOGOD';
-    setSelectedOnlineMethod(targetMethod);
-    setIsMobileModalOpen(true);
+    await executeOrderCreation('COD');
   };
 
-  const handleMobilePaymentConfirm = async (txId: string) => {
-    setSubmittingPayment(true);
-    try {
-      await paymentApi.verifyMobileBankingPayment({
-        paymentMethod: selectedOnlineMethod as 'BKASH' | 'ROCKET' | 'NOGOD',
-        transactionId: txId,
-        amount: grandTotal,
-      });
-      setTransactionId(txId);
-      setIsMobileModalOpen(false);
-      await executeOrderCreation(selectedOnlineMethod, txId);
-    } catch (e) {
-      Alert.alert('Payment Error', getErrorMessage(e));
-    } finally {
-      setSubmittingPayment(false);
-    }
-  };
 
-  const handleBankPaymentConfirm = async (bankName: string, accountNumber: string) => {
-    setSubmittingPayment(true);
-    try {
-      const res = await paymentApi.processBankPayment({
-        bankName,
-        accountNumber,
-        amount: grandTotal,
-      });
-      setTransactionId(res.transactionId);
-      setIsBankModalOpen(false);
-      await executeOrderCreation('BANK_TRANSFER', res.transactionId);
-    } catch (e) {
-      Alert.alert('Payment Error', getErrorMessage(e));
-    } finally {
-      setSubmittingPayment(false);
-    }
-  };
 
-  const handleCardPaymentConfirm = async (cardNumber: string, expiryDate: string, cvv: string) => {
-    setSubmittingPayment(true);
-    try {
-      const res = await paymentApi.processCardPayment({
-        cardNumber,
-        expiryDate,
-        cvv,
-        amount: grandTotal,
-      });
-      setTransactionId(res.transactionId);
-      setIsCardModalOpen(false);
-      await executeOrderCreation('CARD', res.transactionId);
-    } catch (e) {
-      Alert.alert('Payment Error', getErrorMessage(e));
-    } finally {
-      setSubmittingPayment(false);
-    }
-  };
+
 
   if (loading) return <Loader fullscreen />;
 
@@ -422,68 +352,64 @@ export default function CheckoutScreen() {
             </>
           )}
 
-          {/* Mobile Banking Payment System Section */}
-          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: spacing.xl }]}>
-            Payment Method (Mobile Banking)
-          </Text>
 
-          <View style={[styles.onlineSubBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
-            {[
-              { key: 'BKASH', title: 'bKash Mobile Banking', color: '#E2136E', number: '01760049326' },
-              { key: 'ROCKET', title: 'Rocket Mobile Banking', color: '#8C3494', number: '01760049326' },
-              { key: 'NOGOD', title: 'Nagad Mobile Banking', color: '#F7921E', number: '01760049326' },
-            ].map((opt) => {
-              const isSelected = paymentMethod === opt.key;
-              return (
-                <TouchableOpacity
-                  key={opt.key}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setPaymentMethod(opt.key as any);
-                    setSelectedOnlineMethod(opt.key as any);
-                  }}
-                  style={[
-                    styles.subOptionItem,
-                    {
-                      backgroundColor: isSelected ? opt.color + '15' : colors.surface,
-                      borderColor: isSelected ? opt.color : colors.border,
-                      borderWidth: isSelected ? 2 : 1,
-                      paddingVertical: 12,
-                    },
-                  ]}
-                >
-                  <View style={styles.subOptionLeft}>
-                    <Wallet size={22} color={opt.color} />
-                    <View>
-                      <Text style={[styles.subOptionText, { color: colors.text, fontWeight: '700', fontSize: 15 }]}>
-                        {opt.title}
-                      </Text>
-                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                        Send Money to: <Text style={{ fontWeight: '700', color: opt.color }}>{opt.number}</Text>
+          {/* Order Summary */}
+          <Card padding="lg" style={styles.summaryCard}>
+            <Text style={[styles.summaryTitle, { color: colors.text }]}>Price Breakdown</Text>
+            
+            {/* Itemized Product Price vs Discount Price List */}
+            <View style={{ marginVertical: 4, gap: 4 }}>
+              {items.map((i, idx) => {
+                const origPrice = i.product?.price || (i.subtotal / (i.quantity || 1));
+                const discPrice = i.product?.discountPrice ?? origPrice;
+                const hasDiscount = discPrice < origPrice;
+                return (
+                  <View key={i.id || idx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 3 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text, flex: 1, marginRight: 8 }} numberOfLines={1}>
+                      {idx + 1}. {i.product?.name || 'Product'} ({i.quantity}x)
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {hasDiscount && (
+                        <Text style={{ fontSize: 11, color: colors.textTertiary, textDecorationLine: 'line-through' }}>
+                          {formatCurrency(origPrice * i.quantity)}
+                        </Text>
+                      )}
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: hasDiscount ? colors.primary : colors.text }}>
+                        {formatCurrency(discPrice * i.quantity)}
                       </Text>
                     </View>
                   </View>
-
-                  <View style={[styles.subRadio, { borderColor: isSelected ? opt.color : colors.border }]}>
-                    {isSelected && <View style={[styles.subRadioInner, { backgroundColor: opt.color }]} />}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Order Summary */}
-          <Card padding="lg" style={[styles.summaryCard, { marginTop: spacing.xl }]}>
-            <Text style={[styles.summaryTitle, { color: colors.text }]}>Order Summary</Text>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Items ({itemCount})</Text>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(totalAmount)}</Text>
+                );
+              })}
             </View>
+
+            <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 8, opacity: 0.6 }]} />
+
             <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Delivery</Text>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(DELIVERY_CHARGE)}</Text>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Items Subtotal ({itemCount})</Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>
+                {formatCurrency(originalAmount > 0 ? originalAmount : totalAmount)}
+              </Text>
             </View>
+
+            {discountSavings > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: '#10B981', fontWeight: '600' }]}>Product Savings</Text>
+                <Text style={[styles.summaryValue, { color: '#10B981', fontWeight: '700' }]}>
+                  -{formatCurrency(discountSavings)}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Delivery Charge</Text>
+              <Text style={[styles.summaryValue, { color: deliveryCharge === 0 ? '#10B981' : colors.text }]}>
+                {deliveryCharge === 0 ? 'FREE' : formatCurrency(deliveryCharge)}
+              </Text>
+            </View>
+
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
             <View style={styles.summaryRow}>
               <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Grand Total</Text>
               <Text style={[styles.grandTotalValue, { color: colors.primary }]}>{formatCurrency(grandTotal)}</Text>
@@ -499,7 +425,23 @@ export default function CheckoutScreen() {
             <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Total</Text>
             <Text style={[styles.footerPrice, { color: colors.primary }]}>{formatCurrency(grandTotal)}</Text>
           </View>
-          <Button title="Place Order" onPress={handlePlaceOrder} loading={placing} size="lg" />
+          <Button
+            title={placing ? 'Placing Order...' : 'Place Order'}
+            onPress={async () => {
+              if (!selectedAddress) {
+                setError('Please select a delivery address');
+                return;
+              }
+              if (!items || items.length === 0) {
+                setError('Your cart is empty');
+                return;
+              }
+              setError('');
+              await executeOrderCreation('COD');
+            }}
+            loading={placing}
+            size="lg"
+          />
         </View>
 
         {/* Address Add Option Modal */}
@@ -783,35 +725,7 @@ export default function CheckoutScreen() {
           />
         </Modal>
 
-        {/* Mobile Banking Payment Modal */}
-        {['BKASH', 'ROCKET', 'NOGOD'].includes(selectedOnlineMethod) && (
-          <MobileBankingModal
-            visible={isMobileModalOpen}
-            methodKey={selectedOnlineMethod as 'BKASH' | 'ROCKET' | 'NOGOD'}
-            amount={grandTotal}
-            onClose={() => setIsMobileModalOpen(false)}
-            onConfirm={handleMobilePaymentConfirm}
-            isSubmitting={submittingPayment}
-          />
-        )}
 
-        {/* Bank Transfer Modal */}
-        <BankTransferModal
-          visible={isBankModalOpen}
-          amount={grandTotal}
-          onClose={() => setIsBankModalOpen(false)}
-          onConfirm={handleBankPaymentConfirm}
-          isSubmitting={submittingPayment}
-        />
-
-        {/* Card Payment Modal */}
-        <CardPaymentModal
-          visible={isCardModalOpen}
-          amount={grandTotal}
-          onClose={() => setIsCardModalOpen(false)}
-          onConfirm={handleCardPaymentConfirm}
-          isSubmitting={submittingPayment}
-        />
       </View>
     </View>
   );
@@ -819,6 +733,31 @@ export default function CheckoutScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  payMethodOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    gap: 12,
+  },
+  payMethodOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -907,12 +846,51 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     borderTopWidth: 1,
+    gap: 12,
+    flexWrap: 'wrap',
   },
-  footerInfo: { flex: 1, marginRight: spacing.md },
+  footerInfo: { flex: 1, marginRight: spacing.xs, minWidth: 80 },
   footerLabel: { ...typography.caption },
   footerPrice: { ...typography.price },
+  paymentBtnsCol: {
+    gap: 6,
+    alignItems: 'stretch',
+    minWidth: 180,
+  },
+  payBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+  },
+  payBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  subMethodRow: {
+    flexDirection: 'row',
+    gap: 6,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: 6,
+  },
+  subMethodBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
+  subMethodText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
 
   // Modal Styles
   modalOverlay: {
@@ -1105,15 +1083,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Payment Options Styles
-  paymentOptionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    gap: 12,
-    marginTop: spacing.xs,
-  },
   paymentRadio: {
     width: 20,
     height: 20,

@@ -11,10 +11,12 @@ import {
   FlatList,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Minus, Plus, ShoppingCart, Star, Truck, Shield, Package } from 'lucide-react-native';
+import { ArrowLeft, Minus, Plus, ShoppingCart, Star, Truck, Shield, Package, Heart } from 'lucide-react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useCart } from '../hooks/useCart';
 import * as productApi from '../services/productApi';
+import { wishlistApi } from '../services/wishlistApi';
+import { showToast } from '../../common/Toast';
 import { Button } from '../../common/Button';
 import { Card } from '../../common/Card';
 import { Badge } from '../../common/Badge';
@@ -23,6 +25,8 @@ import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { Product, Review } from '../../../shared/types/product.types';
 import { formatCurrency, getDiscountPercentage, getEffectivePrice } from '../../../shared/utils/formatters';
+import { AddToCartSuccessModal } from '../components/AddToCartSuccessModal';
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,6 +34,7 @@ export default function ProductDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   const { addToCart } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -38,14 +43,21 @@ export default function ProductDetailScreen() {
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
-      const p = await productApi.fetchProductById(id);
+      const [p, userWishlist] = await Promise.all([
+        productApi.fetchProductById(id),
+        wishlistApi.getWishlist().catch(() => []),
+      ]);
       setProduct(p);
       if (p.reviews) setReviews(p.reviews);
+      if (userWishlist && Array.isArray(userWishlist)) {
+        setIsSaved(userWishlist.some((w) => w.productId === id));
+      }
     } catch (e) {
       // handle error
     } finally {
@@ -63,12 +75,14 @@ export default function ProductDetailScreen() {
     setRefreshing(false);
   }, [load]);
 
+  const [showAddSuccessModal, setShowAddSuccessModal] = useState(false);
+
   const handleAddToCart = async () => {
     if (!product) return;
     setAdding(true);
-    await addToCart(product.id, quantity);
+    await addToCart(product, quantity);
     setAdding(false);
-    router.push('/(tabs)/cart');
+    setShowAddSuccessModal(true);
   };
 
   if (loading) return <Loader fullscreen />;
@@ -93,43 +107,70 @@ export default function ProductDetailScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <View style={[styles.header, { backgroundColor: colors.surface }]}>
-          <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
-            <ArrowLeft size={22} color={colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
-            <ShoppingCart size={22} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.imageSection}>
-          <FlatList
-            data={product.images.length > 0 ? product.images : ['https://placehold.co/400x400?text=No+Image']}
-            keyExtractor={(item, index) => index.toString()}
-            renderItem={({ item }) => (
-              <Image source={{ uri: item }} style={styles.productImage} resizeMode="contain" />
-            )}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(e) => {
-              setActiveImageIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH));
-            }}
-          />
-          <View style={styles.dotsContainer}>
-            {product.images.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.dot,
-                  { backgroundColor: index === activeImageIndex ? colors.primary : colors.border },
-                ]}
-              />
-            ))}
+        <View style={{ maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }}>
+          <View style={[styles.header, { backgroundColor: colors.surface, paddingHorizontal: containerPadding }]}>
+            <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
+              <ArrowLeft size={22} color={colors.text} />
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              onPress={async () => {
+                if (!product) return;
+                const nextSaved = !isSaved;
+                setIsSaved(nextSaved);
+                try {
+                  if (nextSaved) {
+                    await wishlistApi.addToWishlist(product.id);
+                    showToast('success', 'Saved to Wishlist ❤️', `${product.name} saved to wishlist!`);
+                  } else {
+                    await wishlistApi.removeFromWishlist(product.id);
+                    showToast('info', 'Wishlist', 'Product removed from wishlist.');
+                  }
+                } catch (err) {
+                  setIsSaved(!nextSaved);
+                }
+              }}
+              style={[styles.backBtn, { backgroundColor: isSaved ? colors.error + '18' : colors.inputBg }]}
+              accessibilityLabel="Wishlist"
+            >
+              <Heart size={20} color={isSaved ? colors.error : colors.text} fill={isSaved ? colors.error : 'none'} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/cart')} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
+              <ShoppingCart size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
           </View>
         </View>
 
-        <View style={[styles.content, { backgroundColor: colors.surface }]}>
+        <View style={{ maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }}>
+          <View style={styles.imageSection}>
+            <FlatList
+              data={product.images.length > 0 ? product.images : ['https://placehold.co/400x400?text=No+Image']}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item }) => (
+                <Image source={{ uri: item }} style={styles.productImage} resizeMode="contain" />
+              )}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e) => {
+                setActiveImageIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH));
+              }}
+            />
+            <View style={styles.dotsContainer}>
+              {product.images.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.dot,
+                    { backgroundColor: index === activeImageIndex ? colors.primary : colors.border },
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.content, { backgroundColor: colors.surface }]}>
           <View style={styles.titleRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: colors.text }]}>{product.name}</Text>
@@ -232,24 +273,35 @@ export default function ProductDetailScreen() {
             </>
           )}
         </View>
+        </View>
       </ScrollView>
 
       <View style={[styles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={styles.footerInfo}>
-          <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Total Price</Text>
-          <Text style={[styles.footerPrice, { color: colors.primary }]}>
-            {formatCurrency(effectivePrice * quantity)}
-          </Text>
+        <View style={{ maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'center', paddingHorizontal: containerPadding }}>
+          <View style={styles.footerInfo}>
+            <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Total Price</Text>
+            <Text style={[styles.footerPrice, { color: colors.primary }]}>
+              {formatCurrency(effectivePrice * quantity)}
+            </Text>
+          </View>
+          <Button
+            title="Add to Cart"
+            onPress={handleAddToCart}
+            loading={adding}
+            disabled={outOfStock}
+            leftIcon={<ShoppingCart size={20} color="#FFFFFF" />}
+            size="lg"
+          />
         </View>
-        <Button
-          title="Add to Cart"
-          onPress={handleAddToCart}
-          loading={adding}
-          disabled={outOfStock}
-          leftIcon={<ShoppingCart size={20} color="#FFFFFF" />}
-          size="lg"
-        />
       </View>
+
+      <AddToCartSuccessModal
+        visible={showAddSuccessModal}
+        product={product}
+        onClose={() => setShowAddSuccessModal(false)}
+        onConfirmAdd={async (p, q) => { await addToCart(p, q); }}
+        onViewCart={() => router.push('/(tabs)/cart')}
+      />
     </View>
   );
 }

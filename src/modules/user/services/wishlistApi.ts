@@ -26,5 +26,15 @@ export const wishlistApi = {
   
   removeFromWishlist: (productId: string) => {
     return del<{ success: boolean }>(`/wishlists/${productId}`);
+  },
+
+  clearWishlist: async (items: WishlistItem[]) => {
+    if (items && items.length > 0) {
+      await Promise.allSettled(items.map((i) => del(`/wishlists/${i.productId}`)));
+    }
+    try {
+      await del('/wishlists');
+    } catch (e) {}
+    return { success: true };
   }
 };

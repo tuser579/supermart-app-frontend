@@ -9,12 +9,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/hooks/useTheme';
+import { useResponsiveLayout } from '../../shared/hooks/useResponsiveLayout';
 
 interface ScreenWrapperProps {
   children: React.ReactNode;
   scroll?: boolean;
   style?: ViewStyle;
   avoidKeyboard?: boolean;
+  maxWidth?: number;
 }
 
 export function ScreenWrapper({
@@ -22,25 +24,38 @@ export function ScreenWrapper({
   scroll = true,
   style,
   avoidKeyboard = true,
+  maxWidth,
 }: ScreenWrapperProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { contentMaxWidth, containerPadding, isDesktop } = useResponsiveLayout();
+
+  const effectiveMaxWidth = maxWidth || contentMaxWidth;
 
   const content = (
-    <>
+    <View style={{ flex: 1, width: '100%' }}>
       {scroll ? (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 8 }]}
+          contentContainerStyle={[
+            styles.contentContainer,
+            { paddingTop: insets.top + 8, paddingHorizontal: containerPadding },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {children}
+          <View style={{ width: '100%', maxWidth: effectiveMaxWidth, alignSelf: 'center', flexGrow: 1 }}>
+            {children}
+          </View>
         </ScrollView>
       ) : (
-        <View style={[styles.viewContainer, { paddingTop: insets.top + 8 }]}>{children}</View>
+        <View style={[styles.viewContainer, { paddingTop: insets.top + 8, paddingHorizontal: containerPadding }]}>
+          <View style={{ width: '100%', maxWidth: effectiveMaxWidth, alignSelf: 'center', flex: 1 }}>
+            {children}
+          </View>
+        </View>
       )}
-    </>
+    </View>
   );
 
   if (avoidKeyboard) {

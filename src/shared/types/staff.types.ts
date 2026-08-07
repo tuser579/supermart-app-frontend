@@ -78,6 +78,12 @@ export interface StaffQuickAction {
   description: string;
 }
 
+export interface StaffCashSummary {
+  pendingCashToCollect: number;
+  totalCashCollected: number;
+  cashCollectedToday: number;
+}
+
 export interface StaffQuickOptions {
   profile: {
     staffId: string;
@@ -90,6 +96,7 @@ export interface StaffQuickOptions {
   };
   todayAttendance: TodayAttendanceStatus;
   workload: StaffWorkloadSummary;
+  cashSummary?: StaffCashSummary;
   recentAssignedOrders: Array<any>;
   quickActions: StaffQuickAction[];
 }

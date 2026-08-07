@@ -8,15 +8,28 @@ export async function fetchOrders(params?: {
 }): Promise<{ data: Order[]; meta: OrderPagination }> {
   const response = await getFull<any>(`/orders`, params as Record<string, unknown>);
   const rawData = response.data;
-  const ordersList: Order[] = Array.isArray(rawData)
-    ? rawData
-    : Array.isArray(rawData?.orders)
-    ? rawData.orders
-    : [];
 
-  const page = rawData?.page || 1;
-  const limit = rawData?.limit || 20;
-  const total = rawData?.total || ordersList.length;
+  // Handle standard paginated response: { data: Order[], meta: { page, limit, total, totalPages, hasNext, hasPrev } }
+  let ordersList: Order[] = [];
+  let metaRaw: any = {};
+
+  if (rawData && Array.isArray(rawData.data)) {
+    // Standard format: { data: [], meta: {} }
+    ordersList = rawData.data;
+    metaRaw = rawData.meta || {};
+  } else if (Array.isArray(rawData)) {
+    ordersList = rawData;
+  } else if (rawData && Array.isArray(rawData.orders)) {
+    ordersList = rawData.orders;
+    metaRaw = rawData;
+  }
+
+  const page = metaRaw.page || rawData?.page || 1;
+  const limit = metaRaw.limit || rawData?.limit || 20;
+  const total = metaRaw.total || rawData?.total || ordersList.length;
+  const totalPages = metaRaw.totalPages || Math.ceil(total / limit);
+  const hasNext = metaRaw.hasNext ?? (page * limit < total);
+  const hasPrev = metaRaw.hasPrev ?? (page > 1);
 
   return {
     data: ordersList,
@@ -24,10 +37,10 @@ export async function fetchOrders(params?: {
       page,
       limit,
       total,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page * limit < total,
-      hasPrev: page > 1,
-    } as unknown as OrderPagination,
+      totalPages,
+      hasNext,
+      hasPrev,
+    } as OrderPagination,
   };
 }
 
@@ -40,11 +53,15 @@ export async function createOrder(payload: CreateOrderPayload): Promise<Order> {
 }
 
 export async function cancelOrder(id: string, reason?: string): Promise<Order> {
-  return post<Order>(`/orders/${id}/cancel`, { reason });
+  try {
+    return await post<Order>(`/orders/${id}/cancel`, { reason });
+  } catch (e) {
+    return await put<Order>(`/orders/${id}/status`, { status: 'CANCELLED', paymentStatus: 'FAILED', cancellationReason: reason });
+  }
 }
 
-export async function updateOrderStatus(id: string, status: string): Promise<Order> {
-  return put<Order>(`/orders/${id}/status`, { status });
+export async function updateOrderStatus(id: string, status: string, notes?: string): Promise<Order> {
+  return put<Order>(`/orders/${id}/status`, { status, notes });
 }
 
 export async function acceptOrder(id: string): Promise<Order> {

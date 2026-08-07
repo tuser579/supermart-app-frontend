@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useAppDispatch, useAppSelector } from '../../../shared/hooks/useRedux';
-import { setCart, addItem, removeItem, updateQty, clearCart } from '../../../shared/store/slices/cartSlice';
+import { setCart, addItem, removeItem, updateQty, applyCoupon, removeCoupon, clearCart } from '../../../shared/store/slices/cartSlice';
 import * as cartApi from '../services/cartApi';
 import * as productApi from '../services/productApi';
 import { getErrorMessage } from '../../../shared/api/apiClient';
@@ -263,14 +263,56 @@ export function useCart() {
     }
   }, [dispatch]);
 
+  const applyCouponCode = useCallback(
+    (code: string) => {
+      const clean = (code || '').toUpperCase().trim();
+      if (!clean) return { success: false, message: 'Please enter a coupon code' };
+
+      let discount = 0;
+      if (clean === 'SUPER10' || clean === 'SAVE10') {
+        discount = Math.round(totalAmount * 0.10);
+      } else if (clean === 'SUPER20' || clean === 'SAVE20') {
+        discount = Math.round(totalAmount * 0.20);
+      } else if (clean === 'SAVE50' || clean === 'WELCOME50') {
+        discount = 50;
+      } else if (clean === 'SAVE100' || clean === 'WELCOME100') {
+        discount = 100;
+      } else {
+        return { success: false, message: 'Invalid coupon code' };
+      }
+
+      dispatch(applyCoupon({ code: clean, discount }));
+      return { success: true, message: `Coupon ${clean} applied successfully!` };
+    },
+    [dispatch, totalAmount]
+  );
+
+  const removeCouponCode = useCallback(() => {
+    dispatch(removeCoupon());
+  }, [dispatch]);
+
+  const { originalAmount, discountSavings, couponCode, couponDiscount } = useAppSelector((s) => s.cart);
+
+  // Free delivery threshold: Free for orders over ৳2,000!
+  const deliveryCharge = itemCount > 0 ? (totalAmount >= 2000 ? 0 : 60) : 0;
+  const grandTotal = Math.max(0, totalAmount - couponDiscount + deliveryCharge);
+
   return {
     items,
     totalAmount,
+    originalAmount,
+    discountSavings,
+    couponCode,
+    couponDiscount,
+    deliveryCharge,
+    grandTotal,
     itemCount,
     loadCart,
     addToCart,
     updateQuantity,
     removeItemFromCart,
     clearAllCart,
+    applyCouponCode,
+    removeCouponCode,
   };
 }

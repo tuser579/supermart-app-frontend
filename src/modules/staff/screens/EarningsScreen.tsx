@@ -85,7 +85,7 @@ export default function EarningsScreen() {
             <View style={styles.deliveryRow}>
               <View>
                 <Text style={[styles.deliveryId, { color: colors.text }]}>
-                  #{delivery.orderId.slice(-8).toUpperCase()}
+                  #{delivery.orderId || delivery.id}
                 </Text>
                 <Text style={[styles.deliveryDate, { color: colors.textSecondary }]}>
                   {formatDate(delivery.date)}

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
-import { Plus, Star } from 'lucide-react-native';
+import { Plus, Star, Heart } from 'lucide-react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { Card } from '../../common/Card';
 import { Badge } from '../../common/Badge';
@@ -9,8 +9,43 @@ import { typography } from '../../../shared/theme/typography';
 import { Product } from '../../../shared/types/product.types';
 import { formatCurrency, getDiscountPercentage, getEffectivePrice } from '../../../shared/utils/formatters';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+import { wishlistApi } from '../services/wishlistApi';
+import { showToast } from '../../common/Toast';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Shared wishlist cache to avoid redundant API calls per card
+let wishlistProductIdsCache: Set<string> | null = null;
+let wishlistFetchPromise: Promise<Set<string>> | null = null;
+
+export async function getWishlistProductIds(): Promise<Set<string>> {
+  if (wishlistProductIdsCache) return wishlistProductIdsCache;
+  if (!wishlistFetchPromise) {
+    wishlistFetchPromise = wishlistApi
+      .getWishlist()
+      .then((items) => {
+        const set = new Set((items || []).map((item) => item.productId));
+        wishlistProductIdsCache = set;
+        wishlistFetchPromise = null;
+        return set;
+      })
+      .catch(() => {
+        wishlistFetchPromise = null;
+        return new Set<string>();
+      });
+  }
+  return wishlistFetchPromise;
+}
+
+export function updateWishlistCache(productId: string, isSaved: boolean) {
+  if (wishlistProductIdsCache) {
+    if (isSaved) {
+      wishlistProductIdsCache.add(productId);
+    } else {
+      wishlistProductIdsCache.delete(productId);
+    }
+  }
+}
 
 interface ProductCardProps {
   product: Product;
@@ -21,9 +56,41 @@ interface ProductCardProps {
 export function ProductCard({ product, onPress, onAddToCart }: ProductCardProps) {
   const { colors } = useTheme();
   const { isTablet, isDesktop } = useResponsiveLayout();
+  const [isSaved, setIsSaved] = useState(false);
   const discount = getDiscountPercentage(product.price, product.discountPrice);
   const effectivePrice = getEffectivePrice(product.price, product.discountPrice);
   const outOfStock = product.stock === 0;
+
+  useEffect(() => {
+    let isMounted = true;
+    getWishlistProductIds().then((ids) => {
+      if (isMounted) {
+        setIsSaved(ids.has(product.id));
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [product.id]);
+
+  const handleWishlistToggle = async (e: any) => {
+    e.stopPropagation();
+    const nextSaved = !isSaved;
+    setIsSaved(nextSaved);
+    updateWishlistCache(product.id, nextSaved);
+    try {
+      if (nextSaved) {
+        await wishlistApi.addToWishlist(product.id);
+        showToast('success', 'Saved to Wishlist ❤️', `${product.name} saved to wishlist!`);
+      } else {
+        await wishlistApi.removeFromWishlist(product.id);
+        showToast('info', 'Wishlist', 'Product removed from wishlist.');
+      }
+    } catch (err) {
+      setIsSaved(!nextSaved);
+      updateWishlistCache(product.id, !nextSaved);
+    }
+  };
 
   // Responsive sizing
   const isLargeScreen = isTablet || isDesktop;
@@ -74,6 +141,16 @@ export function ProductCard({ product, onPress, onAddToCart }: ProductCardProps)
               />
             </View>
           )}
+          <TouchableOpacity
+            style={[
+              styles.wishlistCardBtn,
+              { backgroundColor: isSaved ? colors.surface : 'rgba(255,255,255,0.9)' }
+            ]}
+            onPress={handleWishlistToggle}
+            accessibilityLabel="Add to Wishlist"
+          >
+            <Heart size={16} color={isSaved ? '#FF3B30' : colors.textSecondary} fill={isSaved ? '#FF3B30' : 'none'} />
+          </TouchableOpacity>
           {outOfStock && (
             <View style={styles.stockOverlay}>
               <Text style={[
@@ -165,7 +242,10 @@ export function ProductCard({ product, onPress, onAddToCart }: ProductCardProps)
 
         {onAddToCart && !outOfStock && (
           <TouchableOpacity
-            onPress={() => onAddToCart(product)}
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              onAddToCart(product);
+            }}
             style={[
               styles.addToCartBtn,
               { 
@@ -218,8 +298,25 @@ const styles = StyleSheet.create({
   },
   discountBadge: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: spacing.xs,
+    left: spacing.xs,
+    zIndex: 1,
+  },
+  wishlistCardBtn: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
+    zIndex: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   badgeLarge: {
     transform: [{ scale: 1.1 }],

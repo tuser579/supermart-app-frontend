@@ -15,6 +15,7 @@ import {
   ArrowLeft, MapPin, Navigation, Phone, User, X,
   Maximize2, Minimize2, Search,
 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
@@ -134,6 +135,7 @@ const AREA_PRESETS = [
 
 export function MapPickerScreen({ onConfirm, onClose, saving = false }: MapPickerScreenProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [pickedLocation, setPickedLocation]   = useState<PickedLocation | null>(null);
   const [pickedAddress, setPickedAddress]     = useState('');
   const [fullName, setFullName]               = useState('');
@@ -265,7 +267,7 @@ export function MapPickerScreen({ onConfirm, onClose, saving = false }: MapPicke
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* ── Header ── */}
       {!isFullscreen && (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border, paddingTop: Math.max((insets?.top || 0), spacing.sm) }]}>
           <TouchableOpacity onPress={onClose} style={[styles.iconBtn, { backgroundColor: colors.inputBg }]}>
             <ArrowLeft size={20} color={colors.text} />
           </TouchableOpacity>
@@ -329,7 +331,7 @@ export function MapPickerScreen({ onConfirm, onClose, saving = false }: MapPicke
       {/* ── Content Below Map ── */}
       {!isFullscreen && (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max((insets?.bottom || 0) + 20, 28) }]}>
             
             {/* 1. Search Location & Area Chips Section */}
             <View style={styles.searchSection}>

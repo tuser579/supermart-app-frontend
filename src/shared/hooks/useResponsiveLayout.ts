@@ -6,18 +6,22 @@ export function useResponsiveLayout() {
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isDesktop = width >= 1024;
+  const isLargeDesktop = width >= 1280;
 
   let numColumns = 2; // default for mobile grids
   if (isTablet) numColumns = 3;
   if (isDesktop) numColumns = 4;
+  if (isLargeDesktop) numColumns = 5;
 
-  // For lists or content wrappers that shouldn't stretch too far
-  const contentMaxWidth = 1200;
+  const contentMaxWidth = 1280;
   
-  // Dynamic padding to feel balanced on bigger screens
   let containerPadding = 16;
   if (isTablet) containerPadding = 24;
   if (isDesktop) containerPadding = 32;
+
+  let gridGap = 12;
+  if (isTablet) gridGap = 16;
+  if (isDesktop) gridGap = 20;
 
   return {
     width,
@@ -25,8 +29,10 @@ export function useResponsiveLayout() {
     isMobile,
     isTablet,
     isDesktop,
+    isLargeDesktop,
     numColumns,
     contentMaxWidth,
     containerPadding,
+    gridGap,
   };
 }

@@ -37,7 +37,15 @@ export function Badge({ label, variant = 'default', size = 'sm' }: BadgeProps) {
   );
 }
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+export function OrderStatusBadge({
+  status,
+  assignedStaff,
+  assignedStaffId,
+}: {
+  status: OrderStatus;
+  assignedStaff?: any;
+  assignedStaffId?: string;
+}) {
   const variantMap: Record<OrderStatus, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
     PENDING: 'warning',
     CONFIRMED: 'info',
@@ -66,7 +74,10 @@ export function OrderStatusBadge({ status }: { status: OrderStatus }) {
     COMPLETED: 'Completed',
   };
 
-  return <Badge label={labels[status] ?? status} variant={variantMap[status] ?? 'default'} size="sm" />;
+  const isConfirmedWithStaff = status === 'CONFIRMED' && (assignedStaff || assignedStaffId);
+  const badgeLabel = isConfirmedWithStaff ? 'Confirmed • Staff Assigned' : (labels[status] ?? status);
+
+  return <Badge label={badgeLabel} variant={variantMap[status] ?? 'default'} size="sm" />;
 }
 
 const styles = StyleSheet.create({

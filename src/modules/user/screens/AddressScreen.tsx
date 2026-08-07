@@ -11,10 +11,13 @@ import { spacing } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { Address } from '../../../shared/types/address.types';
 import { getErrorMessage } from '../../../shared/api/apiClient';
+import { showToast } from '../../common/Toast';
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
 
 export default function AddressScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,9 +59,10 @@ export default function AddressScreen() {
           onPress: async () => {
             try {
               await addressApi.deleteAddress(addr.id);
+              showToast('success', 'Address Deleted', 'Address has been deleted');
               await load();
             } catch (e) {
-              Alert.alert('Error', getErrorMessage(e));
+              showToast('error', 'Error', getErrorMessage(e));
             }
           },
         },
@@ -69,11 +73,13 @@ export default function AddressScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
-          <ArrowLeft size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>My Addresses</Text>
-        <View style={{ width: 44 }} />
+        <View style={[styles.headerInner, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
+          <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
+            <ArrowLeft size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.text }]}>My Addresses</Text>
+          <View style={{ width: 44 }} />
+        </View>
       </View>
 
       {loading ? (
@@ -83,9 +89,11 @@ export default function AddressScreen() {
           data={addresses}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <AddressCard address={item} onEdit={handleEdit} onDelete={handleDelete} />
+            <View style={{ maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }}>
+              <AddressCard address={item} onEdit={handleEdit} onDelete={handleDelete} />
+            </View>
           )}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingHorizontal: containerPadding }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <EmptyState
@@ -112,13 +120,14 @@ export default function AddressScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    paddingVertical: spacing.md,
+  },
+  headerInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
   },
   backBtn: {
     width: 44,

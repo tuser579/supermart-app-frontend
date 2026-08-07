@@ -15,11 +15,15 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { ShoppingBag, Bell, Search, Truck, Clock, Zap, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { useProducts } from '../hooks/useProducts';
 import { useCart } from '../hooks/useCart';
 import { ProductCard } from '../components/ProductCard';
+import { AddToCartSuccessModal } from '../components/AddToCartSuccessModal';
+import { HowToOrderSection } from '../components/HowToOrderSection';
+import { DesktopFooter } from '../../common/DesktopFooter';
 import { SearchBar } from '../../common/SearchBar';
 import { Card } from '../../common/Card';
 import { Loader } from '../../common/Loader';
@@ -34,23 +38,26 @@ const HERO_BANNERS = [
   {
     id: '1',
     title: 'Fresh Fruits & Veggies',
-    subtitle: 'Farm to your door',
+    subtitle: 'Farm fresh organic produce delivered to your door in 30 minutes',
+    tag: 'UP TO 30% OFF',
     color: '#E8F5E9',
-    image: 'https://images.pexels.com/photos/1132047/pexels-photo-1132047.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: 'https://images.pexels.com/photos/1132047/pexels-photo-1132047.jpeg?auto=compress&cs=tinysrgb&w=800',
   },
   {
     id: '2',
-    title: 'Dairy Delights',
-    subtitle: 'Fresh every morning',
+    title: 'Dairy & Morning Essentials',
+    subtitle: 'Pure milk, fresh cheese & butter direct from dairy farms every morning',
+    tag: 'FRESH DAILY',
     color: '#FFF3E0',
-    image: 'https://images.pexels.com/photos/248412/pexels-photo-248412.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: 'https://images.pexels.com/photos/248412/pexels-photo-248412.jpeg?auto=compress&cs=tinysrgb&w=800',
   },
   {
     id: '3',
-    title: 'Bakery Specials',
-    subtitle: 'Baked with love',
+    title: 'Artisan Bakery Specials',
+    subtitle: 'Freshly baked breads, pastries & cakes prepared with premium ingredients',
+    tag: 'BEST PRICE GUARANTEE',
     color: '#FFF8E1',
-    image: 'https://images.pexels.com/photos/209206/pexels-photo-209206.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: 'https://images.pexels.com/photos/209206/pexels-photo-209206.jpeg?auto=compress&cs=tinysrgb&w=800',
   },
 ];
 
@@ -68,8 +75,9 @@ const CATEGORIES = [
 export default function HomeScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { fetchProducts, products, loading, pagination } = useProducts();
+  const { fetchProducts, loadMore, products, loading, loadingMore, pagination } = useProducts();
   const { addToCart, itemCount } = useCart();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -78,26 +86,29 @@ export default function HomeScreen() {
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const { numColumns, contentMaxWidth, containerPadding, isTablet, isDesktop } = useResponsiveLayout();
   
+  const flatListRef = useRef<FlatList>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async (pageNum = 1, category?: string | null) => {
     await fetchProducts({
       page: pageNum,
-      limit: 10,
+      limit: isDesktop ? 12 : 10,
       category: category || undefined,
     });
     setPage(pageNum);
-  }, [fetchProducts]);
+  }, [fetchProducts, isDesktop]);
 
   useFocusEffect(
     useCallback(() => {
+      setPage(1);
       load(1, selectedCategory);
     }, [load, selectedCategory])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setPage(1);
     await load(1, selectedCategory);
     setRefreshing(false);
   }, [load, selectedCategory]);
@@ -105,12 +116,14 @@ export default function HomeScreen() {
   const handleCategoryPress = (category: string) => {
     const newCat = selectedCategory === category ? null : category;
     setSelectedCategory(newCat);
+    setPage(1);
     load(1, newCat);
   };
 
   // Clear category selection
   const clearCategorySelection = () => {
     setSelectedCategory(null);
+    setPage(1);
     load(1, null);
   };
 
@@ -123,26 +136,36 @@ export default function HomeScreen() {
     router.push(`/product/${product.id}`);
   };
 
-  const handleAddToCart = async (product: Product) => {
-    await addToCart(product, 1);
+  const [selectedProductForCart, setSelectedProductForCart] = useState<Product | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const handleAddToCartPress = (product: Product) => {
+    setSelectedProductForCart(product);
+    setShowAddModal(true);
+  };
+
+  const handleConfirmAddToCart = async (product: Product, quantity: number) => {
+    await addToCart(product, quantity);
   };
 
   const renderProduct = ({ item }: { item: Product }) => (
-    <ProductCard product={item} onPress={handleProductPress} onAddToCart={handleAddToCart} />
+    <ProductCard product={item} onPress={handleProductPress} onAddToCart={handleAddToCartPress} />
   );
 
   // Banner slider handlers
   const handleBannerScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (bannerWidth + 12));
+    const itemGap = isDesktop ? 0 : 12;
+    const index = Math.round(contentOffsetX / (bannerWidth + itemGap));
     setCurrentBannerIndex(index);
   };
 
   const scrollToBanner = (index: number) => {
     const maxIndex = HERO_BANNERS.length - 1;
     const targetIndex = Math.max(0, Math.min(index, maxIndex));
+    const itemGap = isDesktop ? 0 : 12;
     scrollViewRef.current?.scrollTo({
-      x: targetIndex * (bannerWidth + 12),
+      x: targetIndex * (bannerWidth + itemGap),
       animated: true,
     });
     setCurrentBannerIndex(targetIndex);
@@ -160,7 +183,8 @@ export default function HomeScreen() {
 
   // Calculate responsive banner width
   const getBannerWidth = () => {
-    if (isDesktop) return 380;
+    const containerW = Math.min(SCREEN_WIDTH, contentMaxWidth);
+    if (isDesktop) return containerW - containerPadding * 2;
     if (isTablet) return SCREEN_WIDTH * 0.45;
     return Math.min(SCREEN_WIDTH - spacing.lg * 2, contentMaxWidth - spacing.lg * 2);
   };
@@ -177,10 +201,161 @@ export default function HomeScreen() {
     }
   }, [currentBannerIndex]);
 
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || (pagination && newPage > pagination.totalPages) || loading) return;
+    load(newPage, selectedCategory);
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  const renderPagination = () => {
+    if (!pagination || pagination.totalPages <= 1) return null;
+
+    const totalPages = pagination.totalPages;
+    const pagesArray: number[] = [];
+    const maxVisiblePages = 5;
+
+    let startPage = Math.max(1, page - 2);
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage < maxVisiblePages - 1) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pagesArray.push(i);
+    }
+
+    return (
+      <View style={[
+        styles.paginationContainer, 
+        { 
+          backgroundColor: colors.surface, 
+          borderColor: colors.border,
+          marginHorizontal: isDesktop ? containerPadding : spacing.lg,
+        }
+      ]}>
+        <Text style={[styles.paginationInfo, { color: colors.textSecondary }]}>
+          Page <Text style={{ fontWeight: '700', color: colors.text }}>{page}</Text> of{' '}
+          <Text style={{ fontWeight: '700', color: colors.text }}>{totalPages}</Text> ({pagination.total} items)
+        </Text>
+
+        <View style={styles.paginationControls}>
+          <TouchableOpacity
+            onPress={() => handlePageChange(page - 1)}
+            disabled={page <= 1 || loading}
+            style={[
+              styles.pageNavBtn,
+              {
+                backgroundColor: page <= 1 ? colors.inputBg : colors.primaryLight,
+                borderColor: page <= 1 ? colors.border : colors.primary,
+                opacity: page <= 1 ? 0.5 : 1,
+              },
+            ]}
+          >
+            <ChevronLeft size={18} color={page <= 1 ? colors.textTertiary : colors.primary} />
+            <Text
+              style={[
+                styles.pageNavBtnText,
+                { color: page <= 1 ? colors.textTertiary : colors.primary },
+              ]}
+            >
+              Prev
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.pageNumbersRow}>
+            {startPage > 1 && (
+              <>
+                <TouchableOpacity
+                  onPress={() => handlePageChange(1)}
+                  style={[
+                    styles.pageNumberBtn,
+                    {
+                      backgroundColor: page === 1 ? colors.primary : colors.inputBg,
+                      borderColor: page === 1 ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.pageNumberText, { color: page === 1 ? '#FFFFFF' : colors.text }]}>1</Text>
+                </TouchableOpacity>
+                {startPage > 2 && <Text style={[styles.ellipsis, { color: colors.textSecondary }]}>...</Text>}
+              </>
+            )}
+
+            {pagesArray.map((p) => {
+              const isCurrent = p === page;
+              return (
+                <TouchableOpacity
+                  key={p}
+                  onPress={() => handlePageChange(p)}
+                  style={[
+                    styles.pageNumberBtn,
+                    {
+                      backgroundColor: isCurrent ? colors.primary : colors.inputBg,
+                      borderColor: isCurrent ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.pageNumberText, { color: isCurrent ? '#FFFFFF' : colors.text }]}>
+                    {p}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {endPage < totalPages && (
+              <>
+                {endPage < totalPages - 1 && <Text style={[styles.ellipsis, { color: colors.textSecondary }]}>...</Text>}
+                <TouchableOpacity
+                  onPress={() => handlePageChange(totalPages)}
+                  style={[
+                    styles.pageNumberBtn,
+                    {
+                      backgroundColor: page === totalPages ? colors.primary : colors.inputBg,
+                      borderColor: page === totalPages ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.pageNumberText, { color: page === totalPages ? '#FFFFFF' : colors.text }]}>
+                    {totalPages}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => handlePageChange(page + 1)}
+            disabled={page >= totalPages || loading}
+            style={[
+              styles.pageNavBtn,
+              {
+                backgroundColor: page >= totalPages ? colors.inputBg : colors.primaryLight,
+                borderColor: page >= totalPages ? colors.border : colors.primary,
+                opacity: page >= totalPages ? 0.5 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.pageNavBtnText,
+                { color: page >= totalPages ? colors.textTertiary : colors.primary },
+              ]}
+            >
+              Next
+            </Text>
+            <ChevronRight size={18} color={page >= totalPages ? colors.textTertiary : colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={{ width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center', flex: 1 }}>
         <FlatList
+          ref={flatListRef}
           key={numColumns}
           data={products}
           keyExtractor={(item) => item.id}
@@ -189,56 +364,62 @@ export default function HomeScreen() {
           contentContainerStyle={[
             styles.list, 
             { 
-              paddingBottom: isTablet ? 120 : 100,
+              paddingBottom: isDesktop ? 0 : isTablet ? 120 : 100,
             }
           ]}
-          columnWrapperStyle={isTablet ? styles.tabletRow : styles.row}
+          columnWrapperStyle={[
+            isDesktop ? styles.desktopRow : isTablet ? styles.tabletRow : styles.row,
+            { paddingHorizontal: isDesktop ? containerPadding : isTablet ? 12 : 8 }
+          ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListHeaderComponent={
             <View>
               <View style={[styles.header, { 
                 backgroundColor: colors.surface,
-                paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
-                paddingVertical: isTablet ? spacing.xl : spacing.lg,
+                paddingHorizontal: isDesktop ? containerPadding : isTablet ? spacing.xl : spacing.lg,
+                paddingTop: Math.max((insets?.top || 0), isDesktop ? spacing.md : isTablet ? spacing.xl : spacing.lg),
+                paddingBottom: isDesktop ? spacing.md : isTablet ? spacing.xl : spacing.lg,
               }]}>
-                <View style={styles.headerTop}>
-                  <View>
-                    <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-                      Good morning
-                    </Text>
-                    <Text style={[styles.userName, { 
-                      color: colors.text,
-                      fontSize: isTablet ? 22 : 20,
-                    }]}>
-                      {user?.name || 'Guest'}
-                    </Text>
-                  </View>
-                  <View style={styles.headerIcons}>
-                    <TouchableOpacity onPress={() => router.push('/notifications')}>
-                      <View style={[styles.iconBtn, { 
-                        backgroundColor: colors.inputBg,
-                        width: isTablet ? 48 : 44,
-                        height: isTablet ? 48 : 44,
+                {!isDesktop && (
+                  <View style={styles.headerTop}>
+                    <View>
+                      <Text style={[styles.greeting, { color: colors.textSecondary }]}>
+                        Welcome
+                      </Text>
+                      <Text style={[styles.userName, { 
+                        color: colors.text,
+                        fontSize: isTablet ? 22 : 20,
                       }]}>
-                        <Bell size={isTablet ? 22 : 20} color={colors.text} />
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => router.push('/(tabs)/cart')}>
-                      <View style={[styles.iconBtn, { 
-                        backgroundColor: colors.inputBg,
-                        width: isTablet ? 48 : 44,
-                        height: isTablet ? 48 : 44,
-                      }]}>
-                        <ShoppingBag size={isTablet ? 22 : 20} color={colors.text} />
-                        {itemCount > 0 && (
-                          <View style={styles.cartBadge}>
-                            <Text style={styles.cartBadgeText}>{itemCount}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </TouchableOpacity>
+                        {user?.name || 'Guest'}
+                      </Text>
+                    </View>
+                    <View style={styles.headerIcons}>
+                      <TouchableOpacity onPress={() => router.push('/notifications')}>
+                        <View style={[styles.iconBtn, { 
+                          backgroundColor: colors.inputBg,
+                          width: isTablet ? 48 : 44,
+                          height: isTablet ? 48 : 44,
+                        }]}>
+                          <Bell size={isTablet ? 22 : 20} color={colors.text} />
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => router.push('/(tabs)/cart')}>
+                        <View style={[styles.iconBtn, { 
+                          backgroundColor: colors.inputBg,
+                          width: isTablet ? 48 : 44,
+                          height: isTablet ? 48 : 44,
+                        }]}>
+                          <ShoppingBag size={isTablet ? 22 : 20} color={colors.text} />
+                          {itemCount > 0 && (
+                            <View style={styles.cartBadge}>
+                              <Text style={styles.cartBadgeText}>{itemCount}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
+                )}
 
                 <TouchableOpacity onPress={() => router.push('/search')} activeOpacity={0.9}>
                   <SearchBar 
@@ -246,38 +427,44 @@ export default function HomeScreen() {
                     onChangeText={setSearch} 
                     placeholder="Search products..." 
                     style={{ 
-                      marginTop: spacing.md, 
+                      marginTop: isDesktop ? 0 : spacing.md, 
                       marginBottom: 0, 
                       opacity: 0.9,
-                      height: isTablet ? 50 : undefined,
+                      height: isTablet || isDesktop ? 50 : undefined,
                     }} 
                   />
                 </TouchableOpacity>
               </View>
 
               {/* Banner Slider Section */}
-              <View style={styles.bannerWrapper}>
+              <View style={[
+                styles.bannerWrapper,
+                { 
+                  marginHorizontal: isDesktop ? containerPadding : 0,
+                  marginTop: isDesktop ? spacing.xl : spacing.md,
+                }
+              ]}>
                 <ScrollView
                   ref={scrollViewRef}
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  snapToInterval={bannerWidth + 12}
+                  snapToInterval={bannerWidth + (isDesktop ? 0 : 12)}
                   snapToAlignment="center"
                   decelerationRate="fast"
                   contentContainerStyle={[
                     styles.bannerContent,
                     { 
-                      paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
-                      gap: 12,
+                      paddingHorizontal: isDesktop ? 0 : isTablet ? spacing.xl : spacing.lg,
+                      gap: isDesktop ? 0 : 12,
                     }
                   ]}
                   scrollEventThrottle={16}
                   onScroll={handleBannerScroll}
                 >
-                  {HERO_BANNERS.map((banner, index) => (
+                  {HERO_BANNERS.map((banner) => (
                     <TouchableOpacity
                       key={banner.id}
-                      activeOpacity={0.9}
+                      activeOpacity={0.95}
                       onPress={() => console.log('Banner pressed:', banner.id)}
                     >
                       <View 
@@ -286,32 +473,64 @@ export default function HomeScreen() {
                           { 
                             backgroundColor: banner.color,
                             width: bannerWidth,
-                            height: isTablet ? 160 : 140,
-                            borderRadius: isTablet ? radius.xl : radius.lg,
+                            height: isDesktop ? 220 : isTablet ? 160 : 140,
+                            borderRadius: isDesktop ? radius.xl : isTablet ? radius.xl : radius.lg,
                           }
                         ]}
                       >
-                        <View style={[styles.bannerInfo, { padding: isTablet ? spacing.xl : spacing.lg }]}>
+                        <View style={[styles.bannerInfo, { padding: isDesktop ? 32 : isTablet ? spacing.xl : spacing.lg }]}>
+                          {banner.tag && isDesktop && (
+                            <View style={{ backgroundColor: colors.primary, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginBottom: 10 }}>
+                              <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>{banner.tag}</Text>
+                            </View>
+                          )}
                           <Text style={[
                             styles.bannerTitle,
-                            { fontSize: isTablet ? 18 : 16 }
+                            { 
+                              fontSize: isDesktop ? 26 : isTablet ? 18 : 16,
+                              lineHeight: isDesktop ? 32 : undefined,
+                              color: colors.text,
+                              fontWeight: '800',
+                            }
                           ]}>
                             {banner.title}
                           </Text>
                           <Text style={[
                             styles.bannerSubtitle,
-                            { fontSize: isTablet ? 14 : 12 }
+                            { 
+                              fontSize: isDesktop ? 15 : isTablet ? 14 : 12,
+                              marginTop: isDesktop ? 6 : 4,
+                              color: colors.textSecondary,
+                            }
                           ]}>
                             {banner.subtitle}
                           </Text>
+                          {isDesktop && (
+                            <View
+                              style={{
+                                backgroundColor: colors.primary,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
+                                paddingHorizontal: 22,
+                                paddingVertical: 10,
+                                borderRadius: 24,
+                                alignSelf: 'flex-start',
+                                marginTop: 18,
+                              }}
+                            >
+                              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Shop Collection</Text>
+                              <ChevronRight size={16} color="#FFFFFF" />
+                            </View>
+                          )}
                         </View>
                         <Image 
                           source={{ uri: banner.image }} 
                           style={[
                             styles.bannerImage,
                             { 
-                              width: isTablet ? 140 : 120,
-                              height: isTablet ? 160 : 140,
+                              width: isDesktop ? 380 : isTablet ? 140 : 120,
+                              height: isDesktop ? 220 : isTablet ? 160 : 140,
                             }
                           ]} 
                           resizeMode="cover" 
@@ -325,38 +544,63 @@ export default function HomeScreen() {
                 {HERO_BANNERS.length > 1 && (
                   <View style={styles.dotsContainer}>
                     {HERO_BANNERS.map((_, index) => (
-                      <View
+                      <TouchableOpacity
                         key={index}
-                        style={[
-                          styles.dot,
-                          {
-                            width: currentBannerIndex === index ? 24 : 8,
-                            height: 8,
-                            backgroundColor: currentBannerIndex === index 
-                              ? colors.primary 
-                              : colors.textTertiary,
-                            borderRadius: 4,
-                          },
-                        ]}
-                      />
+                        onPress={() => scrollToBanner(index)}
+                        activeOpacity={0.7}
+                      >
+                        <View
+                          style={[
+                            styles.dot,
+                            {
+                              width: currentBannerIndex === index ? (isDesktop ? 28 : 24) : 8,
+                              height: 8,
+                              backgroundColor: currentBannerIndex === index 
+                                ? colors.primary 
+                                : colors.textTertiary,
+                              borderRadius: 4,
+                            },
+                          ]}
+                        />
+                      </TouchableOpacity>
                     ))}
                   </View>
                 )}
 
-                {/* Navigation Arrows for Tablet/Desktop */}
-                {isTablet && (
+                {/* Navigation Arrows for Tablet & Desktop */}
+                {(isTablet || isDesktop) && (
                   <>
                     <TouchableOpacity
-                      style={[styles.navArrow, styles.leftArrow, { backgroundColor: 'rgba(255,255,255,0.9)' }]}
+                      style={[
+                        styles.navArrow, 
+                        styles.leftArrow, 
+                        { 
+                          backgroundColor: colors.surface,
+                          borderColor: colors.border,
+                          borderWidth: 1,
+                          left: isDesktop ? 12 : 16,
+                        }
+                      ]}
                       onPress={goToPrevBanner}
+                      activeOpacity={0.8}
                     >
-                      <ChevronLeft size={24} color={colors.text} />
+                      <ChevronLeft size={isDesktop ? 24 : 20} color={colors.text} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.navArrow, styles.rightArrow, { backgroundColor: 'rgba(255,255,255,0.9)' }]}
+                      style={[
+                        styles.navArrow, 
+                        styles.rightArrow, 
+                        { 
+                          backgroundColor: colors.surface,
+                          borderColor: colors.border,
+                          borderWidth: 1,
+                          right: isDesktop ? 12 : 16,
+                        }
+                      ]}
                       onPress={goToNextBanner}
+                      activeOpacity={0.8}
                     >
-                      <ChevronRight size={24} color={colors.text} />
+                      <ChevronRight size={isDesktop ? 24 : 20} color={colors.text} />
                     </TouchableOpacity>
                   </>
                 )}
@@ -367,7 +611,7 @@ export default function HomeScreen() {
                 styles.promoCard, 
                 { 
                   backgroundColor: colors.promo,
-                  marginHorizontal: isTablet ? spacing.xl : spacing.lg,
+                  marginHorizontal: isDesktop ? containerPadding : isTablet ? spacing.xl : spacing.lg,
                   marginTop: isTablet ? spacing.xl : spacing.lg,
                   padding: isTablet ? spacing.xl : spacing.lg,
                   borderRadius: isTablet ? radius.xl : radius.lg,
@@ -393,7 +637,7 @@ export default function HomeScreen() {
                       fontSize: isTablet ? 14 : 12,
                     }
                   ]}>
-                    On orders above ৳500
+                    On orders above ৳2000
                   </Text>
                 </View>
                 <Zap size={isTablet ? 40 : 32} color={colors.promoAccent} />
@@ -403,7 +647,7 @@ export default function HomeScreen() {
               <View style={[
                 styles.sectionHeader,
                 { 
-                  paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
+                  paddingHorizontal: isDesktop ? containerPadding : isTablet ? spacing.xl : spacing.lg,
                   marginTop: isTablet ? spacing.xl : spacing.lg,
                   marginBottom: isTablet ? spacing.md : spacing.sm,
                 }
@@ -431,7 +675,7 @@ export default function HomeScreen() {
               <View style={[
                 styles.categoryGrid,
                 { 
-                  paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
+                  paddingHorizontal: isDesktop ? containerPadding : isTablet ? spacing.xl : spacing.lg,
                   flexDirection: 'row',
                   flexWrap: 'wrap',
                   justifyContent: 'space-between',
@@ -450,8 +694,8 @@ export default function HomeScreen() {
                         { 
                           backgroundColor: isSelected ? colors.primary : colors.surface,
                           borderColor: isSelected ? colors.primary : colors.border,
-                          width: isTablet ? '23%' : '22.5%',
-                          paddingVertical: isTablet ? 14 : 10,
+                          width: isDesktop ? '11.8%' : isTablet ? '23%' : '22.5%',
+                          paddingVertical: isDesktop ? 16 : isTablet ? 14 : 10,
                           paddingHorizontal: 2,
                           borderRadius: isTablet ? radius.lg : radius.md,
                         }
@@ -493,7 +737,7 @@ export default function HomeScreen() {
                 <View style={[
                   styles.selectedCategoryChip,
                   { 
-                    marginHorizontal: isTablet ? spacing.xl : spacing.lg,
+                    marginHorizontal: isDesktop ? containerPadding : isTablet ? spacing.xl : spacing.lg,
                     marginTop: spacing.md,
                     marginBottom: spacing.sm,
                   }
@@ -546,7 +790,7 @@ export default function HomeScreen() {
               <View style={[
                 styles.sectionHeader,
                 { 
-                  paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
+                  paddingHorizontal: isDesktop ? containerPadding : isTablet ? spacing.xl : spacing.lg,
                   marginTop: selectedCategory ? spacing.sm : spacing.lg,
                   marginBottom: isTablet ? spacing.md : spacing.sm,
                 }
@@ -575,14 +819,27 @@ export default function HomeScreen() {
               </View>
             )
           }
-          onEndReached={() => {
-            if (pagination?.hasNext && !loading) {
-              load(page + 1, selectedCategory);
-            }
-          }}
-          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            <View>
+              {renderPagination()}
+              <HowToOrderSection
+                onStartShopping={() =>
+                  flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+                }
+              />
+              <DesktopFooter />
+            </View>
+          }
         />
       </View>
+
+      <AddToCartSuccessModal
+        visible={showAddModal}
+        product={selectedProductForCart}
+        onClose={() => setShowAddModal(false)}
+        onConfirmAdd={handleConfirmAddToCart}
+        onViewCart={() => router.push('/(tabs)/cart')}
+      />
     </View>
   );
 }
@@ -592,6 +849,7 @@ const styles = StyleSheet.create({
   list: { paddingBottom: 100 },
   row: { paddingHorizontal: 8 },
   tabletRow: { paddingHorizontal: 12, gap: 12 },
+  desktopRow: { paddingHorizontal: 16, gap: 16 },
   header: {
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
@@ -776,5 +1034,59 @@ const styles = StyleSheet.create({
   emptyText: { 
     ...typography.body, 
     textAlign: 'center',
+  },
+  paginationContainer: {
+    marginTop: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  paginationInfo: {
+    ...typography.caption,
+    marginBottom: spacing.md,
+  },
+  paginationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  pageNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: 4,
+  },
+  pageNavBtnText: {
+    ...typography.caption,
+    fontWeight: '600',
+  },
+  pageNumbersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pageNumberBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageNumberText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  ellipsis: {
+    fontSize: 14,
+    fontWeight: '600',
+    paddingHorizontal: 2,
   },
 });

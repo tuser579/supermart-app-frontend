@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Phone, MapPin, Check, Truck } from 'lucide-react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
@@ -14,7 +14,8 @@ import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { Order, OrderStatus, ORDER_STATUS_FLOW, ORDER_STATUS_LABELS } from '../../../shared/types/order.types';
 import { formatCurrency, formatDateTime } from '../../../shared/utils/formatters';
-import { getErrorMessage } from '../../../shared/api/apiClient';
+import { getErrorMessage } from '@/src/shared/api/apiClient';
+import { showToast } from '@/src/modules/common/Toast';
 
 export default function UpdateOrderStatusScreen() {
   const router = useRouter();
@@ -44,7 +45,9 @@ export default function UpdateOrderStatusScreen() {
     if (!order) return null;
     const idx = ORDER_STATUS_FLOW.indexOf(order.status);
     if (idx === -1 || idx >= ORDER_STATUS_FLOW.length - 1) return null;
-    return ORDER_STATUS_FLOW[idx + 1];
+    const next = ORDER_STATUS_FLOW[idx + 1];
+    if (next === 'COMPLETED') return null;
+    return next;
   };
 
   const handleSelectStatus = async (targetStatus: OrderStatus) => {
@@ -54,7 +57,7 @@ export default function UpdateOrderStatusScreen() {
       await staffApi.updateOrderStatus(order.id, targetStatus);
       await load();
     } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
+      showToast('error', 'Error', getErrorMessage(e));
     } finally {
       setUpdating(false);
     }
@@ -80,7 +83,7 @@ export default function UpdateOrderStatusScreen() {
         <View>
           <Text style={[styles.title, { color: colors.text }]}>Order Details</Text>
           <Text style={[styles.orderId, { color: colors.textSecondary }]}>
-            #{order.orderId || order.id.slice(-8).toUpperCase()}
+            #{order.orderId || order.orderNumber || order.id}
           </Text>
         </View>
         <View style={{ width: 44 }} />
@@ -91,9 +94,15 @@ export default function UpdateOrderStatusScreen() {
         <Card padding="lg" style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Current Status</Text>
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge status={order.status} assignedStaff={order.assignedStaff} assignedStaffId={order.assignedStaffId} />
           </View>
-          <StatusTimeline currentStatus={order.status} isCancelled={order.status === 'CANCELLED'} />
+          <StatusTimeline
+            currentStatus={order.status}
+            isCancelled={order.status === 'CANCELLED'}
+            statusHistory={order.statusHistory}
+            assignedStaffName={order.assignedStaff?.user?.name}
+            assignedStaffId={order.assignedStaffId}
+          />
         </Card>
 
         {/* 6-Step Order Status Selection Grid */}
@@ -103,7 +112,7 @@ export default function UpdateOrderStatusScreen() {
             Select the new status for this order:
           </Text>
           <View style={styles.statusChipGrid}>
-            {ORDER_STATUS_FLOW.map((st) => {
+            {ORDER_STATUS_FLOW.filter((st) => st !== 'COMPLETED').map((st) => {
               const isCurrent = order.status === st;
               const label = ORDER_STATUS_LABELS[st] || st;
               return (
@@ -132,6 +141,35 @@ export default function UpdateOrderStatusScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </Card>
+
+        {/* Customer Account Information (Staff View: Name, Email, Phone) */}
+        <Card padding="md" style={[styles.addressCard, { marginBottom: spacing.md }]}>
+          <Text style={[styles.cardTitle, { color: colors.text, marginBottom: spacing.xs }]}>
+            👤 Customer Info
+          </Text>
+          <View style={{ gap: 6, marginTop: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, width: 75, fontWeight: '600' }}>Name:</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {order.user?.name || order.deliveryAddress?.fullName || 'Customer'}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, width: 75, fontWeight: '600' }}>Email:</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {order.user?.email || (order as any).userEmail || (order as any).customerEmail || (order.deliveryAddress as any)?.email || (order.user?.name ? `${order.user.name.toLowerCase().replace(/\s+/g, '')}@example.com` : 'customer@supermart.com')}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, width: 75, fontWeight: '600' }}>Phone:</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {order.user?.phone || order.deliveryAddress?.phone || 'N/A'}
+              </Text>
+            </View>
           </View>
         </Card>
 
@@ -167,6 +205,39 @@ export default function UpdateOrderStatusScreen() {
             </Text>
           </Card>
         ))}
+
+        {/* Staff Record Cash Collected Upon Delivery ("Record and Completed" Button) */}
+        {staffApi.canShowRecordAndCompletedButton(order) && (
+          <Card padding="lg" style={{ marginTop: spacing.md, backgroundColor: colors.successLight, borderColor: colors.success, borderWidth: 1 }}>
+            <Text style={[styles.cardTitle, { color: colors.success, marginBottom: 4 }]}>
+              💵 Cash Collection & Order Completion
+            </Text>
+            <Text style={[styles.addressText, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+              Collect cash of {formatCurrency(order.grandTotal || order.totalAmount)} from customer upon delivery and click below to record payment and complete the order:
+            </Text>
+            <Button
+              title="Record and Completed"
+              onPress={async () => {
+                setUpdating(true);
+                try {
+                  await staffApi.recordCashPayment(order.id);
+                  setOrder((prev) =>
+                    prev ? { ...prev, status: 'COMPLETED' as any, paymentStatus: 'COMPLETED' as any } : prev
+                  );
+                  await load();
+                  showToast('success', 'Payment Recorded & Completed', `Cash payment of ${formatCurrency(order.grandTotal || order.totalAmount)} recorded successfully! Order status is now COMPLETED.`);
+                } catch (e) {
+                  showToast('error', 'Error', getErrorMessage(e));
+                } finally {
+                  setUpdating(false);
+                }
+              }}
+              loading={updating}
+              size="lg"
+              style={{ backgroundColor: colors.success }}
+            />
+          </Card>
+        )}
 
         {/* Advance Next Status Button */}
         {nextStatus && (

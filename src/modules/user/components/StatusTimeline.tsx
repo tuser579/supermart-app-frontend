@@ -10,24 +10,49 @@ import { timeAgo, formatDateTime } from '../../../shared/utils/formatters';
 interface StatusTimelineProps {
   currentStatus: OrderStatus;
   isCancelled?: boolean;
+  cancellationReason?: string;
+  cancelledBy?: string;
   mode?: 'vertical' | 'horizontal';
   statusHistory?: { status: string; timestamp: string }[];
+  assignedStaffName?: string;
+  assignedStaffId?: string;
 }
 
-export function StatusTimeline({ currentStatus, isCancelled, mode = 'vertical', statusHistory = [] }: StatusTimelineProps) {
+export function StatusTimeline({
+  currentStatus,
+  isCancelled,
+  cancellationReason,
+  cancelledBy,
+  mode = 'vertical',
+  statusHistory = [],
+  assignedStaffName,
+  assignedStaffId,
+}: StatusTimelineProps) {
   const { colors } = useTheme();
 
   const isOrderCancelled = isCancelled || currentStatus === 'CANCELLED';
   const isReturn = currentStatus === 'RETURN_REQUESTED' || currentStatus === 'RETURNED';
   const isCompleted = currentStatus === 'COMPLETED' || currentStatus === 'ACCEPTED';
 
+  const historyItem = statusHistory?.find((h) => h.status === currentStatus) || statusHistory?.[statusHistory.length - 1];
+
   if (isOrderCancelled) {
+    const isByAdmin = cancelledBy === 'ADMIN' || (cancellationReason && cancellationReason.toLowerCase().includes('admin'));
+    const cancellationTitle = isByAdmin ? 'Order cancelled by admin' : 'Order cancelled by customer';
+
     return (
       <View style={[styles.cancelledContainer, mode === 'horizontal' && styles.horizontalPadding]}>
         <View style={[styles.cancelledDot, { backgroundColor: colors.error }]}>
           <XCircle size={14} color="#FFFFFF" />
         </View>
-        <Text style={[styles.cancelledLabel, { color: colors.error }]}>Order Cancelled</Text>
+        <View>
+          <Text style={[styles.cancelledLabel, { color: colors.error, fontWeight: '700' }]}>{cancellationTitle}</Text>
+          {historyItem && (
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+              {formatDateTime(historyItem.timestamp)} • {timeAgo(historyItem.timestamp)}
+            </Text>
+          )}
+        </View>
       </View>
     );
   }
@@ -38,9 +63,16 @@ export function StatusTimeline({ currentStatus, isCancelled, mode = 'vertical', 
         <View style={[styles.cancelledDot, { backgroundColor: colors.warning }]}>
           <RotateCcw size={14} color="#FFFFFF" />
         </View>
-        <Text style={[styles.cancelledLabel, { color: colors.warning }]}>
-          {ORDER_STATUS_LABELS[currentStatus] || currentStatus}
-        </Text>
+        <View>
+          <Text style={[styles.cancelledLabel, { color: colors.warning }]}>
+            {ORDER_STATUS_LABELS[currentStatus] || currentStatus}
+          </Text>
+          {historyItem && (
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+              {formatDateTime(historyItem.timestamp)} • {timeAgo(historyItem.timestamp)}
+            </Text>
+          )}
+        </View>
       </View>
     );
   }
@@ -51,9 +83,16 @@ export function StatusTimeline({ currentStatus, isCancelled, mode = 'vertical', 
         <View style={[styles.cancelledDot, { backgroundColor: colors.success }]}>
           <Check size={14} color="#FFFFFF" />
         </View>
-        <Text style={[styles.cancelledLabel, { color: colors.success }]}>
-          Order Completed ✓
-        </Text>
+        <View>
+          <Text style={[styles.cancelledLabel, { color: colors.success }]}>
+            Order Completed ✓
+          </Text>
+          {historyItem && (
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+              {formatDateTime(historyItem.timestamp)} • {timeAgo(historyItem.timestamp)}
+            </Text>
+          )}
+        </View>
       </View>
     );
   }
@@ -114,12 +153,19 @@ export function StatusTimeline({ currentStatus, isCancelled, mode = 'vertical', 
         <View style={styles.currentStepLabelRow}>
           <View style={styles.statusBadgeRow}>
             <Clock size={12} color={colors.primary} />
-            <Text style={[styles.currentStepCaption, { color: colors.textSecondary }]}>
-              Current Step:{' '}
-              <Text style={[styles.currentStepName, { color: colors.primary }]}>
-                {ORDER_STATUS_LABELS[currentStatus] || currentStatus}
+            <View>
+              <Text style={[styles.currentStepCaption, { color: colors.textSecondary }]}>
+                Current Step:{' '}
+                <Text style={[styles.currentStepName, { color: colors.primary }]}>
+                  {ORDER_STATUS_LABELS[currentStatus] || currentStatus}
+                </Text>
               </Text>
-            </Text>
+              {historyItem && (
+                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}>
+                  {formatDateTime(historyItem.timestamp)} • {timeAgo(historyItem.timestamp)}
+                </Text>
+              )}
+            </View>
           </View>
           <Text style={[styles.stepCountText, { color: colors.textSecondary }]}>
             Step {safeIndex + 1} of {totalSteps}
@@ -175,6 +221,11 @@ export function StatusTimeline({ currentStatus, isCancelled, mode = 'vertical', 
               >
                 {ORDER_STATUS_LABELS[status]}
               </Text>
+              {status === 'CONFIRMED' && (assignedStaffName || assignedStaffId) && (
+                <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '600', marginTop: 1 }}>
+                  👤 Staff Assigned: {assignedStaffName || 'Assigned'}
+                </Text>
+              )}
               {isCompleted && statusHistory && (
                 <View style={{ marginTop: 2 }}>
                   {(() => {

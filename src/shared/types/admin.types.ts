@@ -8,8 +8,14 @@ export interface AdminDashboardStats {
     total: number;
     pending: number;
     delivered: number;
+    completed?: number;
     cancelled: number;
     revenue: number;
+  };
+  cashPayment?: {
+    pendingCodAmount: number;
+    collectedCodAmount: number;
+    totalCodOrders: number;
   };
   products: {
     total: number;
@@ -19,6 +25,29 @@ export interface AdminDashboardStats {
     total: number;
     available: number;
   };
+}
+
+export interface AdminQuickOptions {
+  assignedOrdersOptions?: {
+    totalAssignedOrders: number;
+    unassignedPendingOrders: number;
+    availableDeliveryStaff: number;
+  };
+  orderCancelOptions?: {
+    cancellableOrdersCount: number;
+    totalCancelledCount: number;
+  };
+  cashPaymentOptions?: {
+    totalCodOrders: number;
+    pendingCodOrders: number;
+    pendingCodAmount: number;
+    collectedCodAmount: number;
+  };
+  quickActions?: Array<{
+    action: string;
+    method: string;
+    endpoint: string;
+  }>;
 }
 
 // Backend returns a plain array of daily items — totalRevenue/totalOrders are computed client-side

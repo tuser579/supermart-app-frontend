@@ -9,23 +9,24 @@ import {
   Alert,
   Modal,
   TextInput,
-  TouchableWithoutFeedback,
-  Keyboard,
   Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  ArrowLeft, MapPin, CreditCard, XCircle, RotateCcw, X, AlertTriangle, CheckCircle2, Wallet, Banknote, UserCheck, UserPlus,
+  ArrowLeft, MapPin, CreditCard, XCircle, RotateCcw, X, AlertTriangle, CheckCircle2, Wallet, Banknote, UserCheck, UserPlus, FileText, Download,
 } from 'lucide-react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import * as orderApi from '../services/orderApi';
 import * as adminApi from '../../admin/services/adminApi';
+import { showToast } from '../../common/Toast';
 import { Card } from '../../common/Card';
 import { Button } from '../../common/Button';
 import { Loader } from '../../common/Loader';
 import { OrderStatusBadge } from '../../common/Badge';
 import { StatusTimeline } from '../components/StatusTimeline';
+import { ReceiptModal } from '../components/ReceiptModal';
+import { downloadReceiptPdf } from '../../../shared/utils/receiptPdfGenerator';
 import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { Order, PaymentMethod, PAYMENT_METHOD_LABELS } from '../../../shared/types/order.types';
@@ -45,7 +46,6 @@ const PAY_METHODS: { key: PaymentMethod; label: string }[] = [
   { key: 'BKASH', label: 'bKash Mobile Banking' },
   { key: 'NOGOD', label: 'Nagad Mobile Banking' },
   { key: 'ROCKET', label: 'Rocket Mobile Banking' },
-  { key: 'CARD', label: 'Credit / Debit Card' },
 ];
 
 export default function TrackOrderScreen() {
@@ -54,10 +54,13 @@ export default function TrackOrderScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+  const isStaff = user?.role === 'STAFF';
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isCodConfirmed, setIsCodConfirmed] = useState(false);
 
   // Staff Assignment State (Admin)
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
@@ -78,10 +81,18 @@ export default function TrackOrderScreen() {
   const [submittingPay, setSubmittingPay] = useState(false);
   const [payError, setPayError] = useState('');
 
-  // Accept Order State
-  const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
+  // Success Modal State
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState({ title: '', message: '' });
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  // Admin Action Confirmation Modals State
+  const [isAdminApproveModalOpen, setIsAdminApproveModalOpen] = useState(false);
+  const [isAdminRejectModalOpen, setIsAdminRejectModalOpen] = useState(false);
+  const [adminRejectReason, setAdminRejectReason] = useState('Order rejected by Admin');
+  const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
+  // Accept Order State
+  const [acceptingOrder, setAcceptingOrder] = useState(false);
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -111,6 +122,16 @@ export default function TrackOrderScreen() {
     }
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (order?.id && Platform.OS === 'web') {
+      try {
+        if (localStorage.getItem(`cod_confirmed_${order.id}`) === 'true') {
+          setIsCodConfirmed(true);
+        }
+      } catch (e) {}
+    }
+  }, [order?.id]);
+
   const handleAssignStaff = async (staffId: string) => {
     if (!order) return;
     setAssigningStaff(true);
@@ -118,38 +139,33 @@ export default function TrackOrderScreen() {
       await adminApi.assignStaffToOrder(order.id, staffId);
       setIsStaffModalOpen(false);
       await load();
-      Alert.alert('Staff Assigned', 'Delivery staff assigned to order successfully!');
+      showToast('success', 'Staff Assigned', 'Delivery staff assigned to order successfully!');
     } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
+      showToast('error', 'Error', getErrorMessage(e));
     } finally {
       setAssigningStaff(false);
     }
   };
 
-  const handleCancel = async () => {
-    if (!order || order.status !== 'PENDING') return;
-    Alert.alert(
-      'Cancel Order',
-      'Are you sure you want to cancel this order?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            setCancelling(true);
-            try {
-              await orderApi.cancelOrder(order.id);
-              await load();
-            } catch (e) {
-              Alert.alert('Error', getErrorMessage(e));
-            } finally {
-              setCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleOpenCancelModal = () => {
+    setIsCancelModalOpen(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!order) return;
+    setCancelling(true);
+    try {
+      await orderApi.cancelOrder(order.id, 'Order cancelled by customer');
+      setOrder((prev) => (prev ? { ...prev, status: 'CANCELLED' as any, paymentStatus: 'FAILED' as any, cancellationReason: 'Order cancelled by customer', cancelledBy: 'CUSTOMER' } : prev));
+      setIsCancelModalOpen(false);
+      await load();
+      showToast('success', 'Order Cancelled', 'Order cancelled successfully.');
+    } catch (e) {
+      setIsCancelModalOpen(false);
+      showToast('error', 'Error', getErrorMessage(e));
+    } finally {
+      setCancelling(false);
+    }
   };
 
   // Open Pay Modal
@@ -166,45 +182,44 @@ export default function TrackOrderScreen() {
     setPayError('');
     setSubmittingPay(true);
     try {
-      await orderApi.payOrder(order.id, selectedPayMethod, payTxnId.trim() || undefined);
-      await load();
-      setIsPayModalOpen(false);
-      Alert.alert('Payment Successful', 'Payment has been successfully recorded for your delivered order!');
+      if (selectedPayMethod === 'COD') {
+        const txnId = `CASH-USER-PAID-${Date.now()}`;
+        await orderApi.payOrder(order.id, 'COD', txnId);
+        await load();
+        if (Platform.OS === 'web') {
+          try {
+            localStorage.setItem(`cod_confirmed_${order.id}`, 'true');
+          } catch (e) {}
+        }
+        setIsCodConfirmed(true);
+        setIsPayModalOpen(false);
+        setSuccessMessage({
+          title: 'Cash Payment Confirmed 💵',
+          message: 'Your payment status is now updated to PAID. Delivery staff will record cash collection and mark your order as Completed.',
+        });
+        setIsSuccessModalOpen(true);
+      } else {
+        // Mobile Banking (bKash / Rocket / Nagad) — submit TxnID for Admin verification
+        if (!payTxnId.trim()) {
+          setPayError('Please enter your Transaction ID (TxnID)');
+          setSubmittingPay(false);
+          return;
+        }
+        await orderApi.payOrder(order.id, selectedPayMethod, payTxnId.trim());
+        await load();
+        setIsPayModalOpen(false);
+        setSuccessMessage({
+          title: 'Transaction ID Submitted 📱',
+          message: 'Your transaction ID has been submitted. Admin will verify your payment and mark your order as Completed.',
+        });
+        setIsSuccessModalOpen(true);
+      }
     } catch (e) {
-      // Fallback: update local state if backend API simulates success
-      setOrder((prev) => prev ? { ...prev, paymentStatus: 'PAID' } : prev);
       setIsPayModalOpen(false);
-      Alert.alert('Payment Successful', 'Payment recorded successfully!');
+      showToast('error', 'Payment Error', getErrorMessage(e));
     } finally {
       setSubmittingPay(false);
     }
-  };
-
-  // Customer Accept Order
-  const handleAcceptOrder = () => {
-    setIsAcceptModalOpen(true);
-  };
-
-  const confirmAcceptOrder = async () => {
-    setIsAcceptModalOpen(false);
-    if (order) {
-      try {
-        await orderApi.acceptOrder(order.id);
-        await load(); // Reload the order from backend
-      } catch (e) {
-        if (Platform.OS === 'web') {
-          window.alert(getErrorMessage(e));
-        } else {
-          Alert.alert('Error', getErrorMessage(e));
-        }
-        return; // Don't show success modal on failure
-      }
-    }
-    setSuccessMessage({
-      title: 'Order Accepted 🎉',
-      message: 'Thank you! Your order has been marked as accepted and completed.',
-    });
-    setIsSuccessModalOpen(true);
   };
 
   // Open Return Modal
@@ -231,12 +246,43 @@ export default function TrackOrderScreen() {
       });
       await load();
       setIsReturnModalOpen(false);
-      Alert.alert('Return Request Submitted', 'Your return report has been submitted and is under review.');
+      showToast('success', 'Return Request Submitted', 'Your return report has been submitted and is under review.');
     } catch (e) {
       setReturnError(getErrorMessage(e));
     } finally {
       setSubmittingReturn(false);
     }
+  };
+
+  // Accept Order — POST /orders/:id/accept
+  const handleAcceptOrder = async () => {
+    if (!order) return;
+    Alert.alert(
+      'Accept Order',
+      'Confirm that you have received the order and everything is in order?',
+      [
+        { text: 'Not yet', style: 'cancel' },
+        {
+          text: 'Yes, Accept',
+          onPress: async () => {
+            setAcceptingOrder(true);
+            try {
+              await orderApi.acceptOrder(order.id);
+              await load();
+              setSuccessMessage({
+                title: 'Order Accepted 🎉',
+                message: 'Thank you! Your order has been marked as Completed.',
+              });
+              setIsSuccessModalOpen(true);
+            } catch (e) {
+              showToast('error', 'Error', getErrorMessage(e));
+            } finally {
+              setAcceptingOrder(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) return <Loader fullscreen />;
@@ -249,10 +295,24 @@ export default function TrackOrderScreen() {
     );
   }
 
-  const canCancel = false; // Disabled: Customers cannot cancel orders after submitting payment (PENDING state)
-  const isDelivered = order.status === 'DELIVERED';
-  const isPaid = order.paymentStatus === 'PAID' || order.paymentStatus === 'COMPLETED';
-  const canPayNow = isDelivered && !isPaid;
+  const normalizedStatus = (order.status || '').toUpperCase().trim();
+  const normalizedPaymentStatus = (order.paymentStatus || '').toUpperCase().trim();
+
+  const canCancel = normalizedStatus === 'PENDING' && !isAdmin;
+  const isDelivered = normalizedStatus === 'DELIVERED';
+  const isCompleted = normalizedStatus === 'COMPLETED';
+  const isPaid = ['PAID', 'COMPLETED', 'SUCCESS', 'SUCCESSFUL'].includes(normalizedPaymentStatus);
+  const isRefunded = ['REFUNDED', 'REFUND', 'REFUND_SUCCESS'].includes(normalizedPaymentStatus);
+  const isFailed = ['FAILED', 'FAIL', 'PAYMENT_FAILED', 'DECLINED'].includes(normalizedPaymentStatus) || (normalizedStatus === 'CANCELLED' && !isPaid && !isRefunded);
+  const displayPaymentStatus = isFailed ? 'FAILED' : normalizedPaymentStatus || 'UNPAID';
+  const isCodActive =
+    isCodConfirmed ||
+    (order.notes || '').includes('COD_CONFIRMED') ||
+    (order.notes || '').includes('COD_PAYMENT_SELECTED') ||
+    (Platform.OS === 'web' && order?.id ? localStorage.getItem(`cod_confirmed_${order.id}`) === 'true' : false);
+  const canPayNow = isDelivered && !isPaid && !isCodActive;
+  const canAcceptNow = isDelivered && isPaid; // Accept = finalize after payment complete
+  const canReturn = isDelivered && !isPaid && !['RETURN_REQUESTED', 'RETURNED', 'COMPLETED'].includes(normalizedStatus);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -264,7 +324,7 @@ export default function TrackOrderScreen() {
         <View>
           <Text style={[styles.title, { color: colors.text }]}>Order Details</Text>
           <Text style={[styles.orderId, { color: colors.textSecondary }]}>
-            #{order.id.slice(-8).toUpperCase()}
+            #{order.orderId || order.orderNumber || order.id}
           </Text>
         </View>
         <View style={{ width: 44 }} />
@@ -275,31 +335,88 @@ export default function TrackOrderScreen() {
         <Card padding="lg" style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Order Status</Text>
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge status={order.status} assignedStaff={order.assignedStaff} assignedStaffId={order.assignedStaffId} />
           </View>
-          <StatusTimeline currentStatus={order.status} isCancelled={order.status === 'CANCELLED'} statusHistory={order.statusHistory} />
+          <StatusTimeline
+            currentStatus={order.status}
+            isCancelled={order.status === 'CANCELLED'}
+            cancellationReason={order.cancellationReason}
+            cancelledBy={(order as any).cancelledBy}
+            statusHistory={order.statusHistory}
+            assignedStaffName={order.assignedStaff?.user?.name}
+            assignedStaffId={order.assignedStaffId}
+          />
+
+          {/* COMPLETED Order Money Receipt Action Buttons */}
+          {isCompleted && (
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setIsReceiptModalOpen(true)}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 10,
+                  borderRadius: radius.md,
+                  backgroundColor: colors.primary + '15',
+                  borderColor: colors.primary + '35',
+                  borderWidth: 1,
+                  gap: 6,
+                }}
+              >
+                <FileText size={16} color={colors.primary} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>View Receipt</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => downloadReceiptPdf(order, user)}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 10,
+                  borderRadius: radius.md,
+                  backgroundColor: colors.primary,
+                  gap: 6,
+                }}
+              >
+                <Download size={16} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Download Receipt</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </Card>
 
         {/* Order Items */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Items</Text>
-        {order.items.map((item) => (
-          <Card key={item.id} padding="md" style={styles.itemCard}>
-            <Image
-              source={{ uri: item.productImage || 'https://placehold.co/80x80?text=No+Image' }}
-              style={styles.itemImage}
-              resizeMode="cover"
-            />
-            <View style={styles.itemInfo}>
-              <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>{item.productName}</Text>
-              <Text style={[styles.itemQty, { color: colors.textSecondary }]}>
-                {formatCurrency(item.price)} x {item.quantity}
-              </Text>
-              <Text style={[styles.itemSubtotal, { color: colors.primary }]}>
-                {formatCurrency(item.subtotal ?? (item.price * item.quantity))}
-              </Text>
-            </View>
-          </Card>
-        ))}
+        {order.items.map((item) => {
+          // Support both nested backend format (item.product.name) and legacy flat format
+          const itemImage = item.product?.images?.[0] || item.productImage || 'https://placehold.co/80x80?text=No+Image';
+          const itemName = item.product?.name || item.productName || 'Product';
+          const itemSubtotal = item.subtotal ?? (item.price * item.quantity);
+          return (
+            <Card key={item.id} padding="md" style={styles.itemCard}>
+              <Image
+                source={{ uri: itemImage }}
+                style={styles.itemImage}
+                resizeMode="cover"
+              />
+              <View style={styles.itemInfo}>
+                <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>{itemName}</Text>
+                <Text style={[styles.itemQty, { color: colors.textSecondary }]}>
+                  {formatCurrency(item.price)} x {item.quantity}
+                </Text>
+                <Text style={[styles.itemSubtotal, { color: colors.primary }]}>
+                  {formatCurrency(itemSubtotal)}
+                </Text>
+              </View>
+            </Card>
+          );
+        })}
 
         {/* Delivery Address */}
         {order.deliveryAddress && (
@@ -326,6 +443,42 @@ export default function TrackOrderScreen() {
             </Card>
           </>
         )}
+
+        {/* Customer Account Information */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Customer Account Information</Text>
+        <Card padding="md" style={styles.addressCard}>
+          <View style={{ gap: 8 }}>
+            {isAdmin && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, width: 80, fontWeight: '600' }}>User ID:</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                  {order.userId || order.user?.id || 'N/A'}
+                </Text>
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, width: 80, fontWeight: '600' }}>Name:</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {order.user?.name || order.deliveryAddress?.fullName || 'Customer'}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, width: 80, fontWeight: '600' }}>Email:</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {order.user?.email || 'N/A'}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, width: 80, fontWeight: '600' }}>Phone:</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {order.user?.phone || order.deliveryAddress?.phone || 'N/A'}
+              </Text>
+            </View>
+          </View>
+        </Card>
 
         {/* Assigned Staff Information (Admin View) */}
         {isAdmin && (
@@ -361,7 +514,7 @@ export default function TrackOrderScreen() {
                   </View>
                 </View>
 
-                {!['CANCELLED', 'RETURN_REQUESTED', 'RETURNED'].includes(order.status) && (
+                {!['PENDING', 'CANCELLED', 'RETURN_REQUESTED', 'RETURNED'].includes(order.status) && !((order as any).assignedStaff || (order as any).staffName || order.assignedStaffId) && (
                   <TouchableOpacity
                     onPress={() => setIsStaffModalOpen(true)}
                     style={{
@@ -376,7 +529,7 @@ export default function TrackOrderScreen() {
                   >
                     <UserPlus size={14} color={colors.primary} />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>
-                      {((order as any).assignedStaff || (order as any).staffName) ? 'Reassign' : 'Assign Staff'}
+                      Assign Staff
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -385,53 +538,252 @@ export default function TrackOrderScreen() {
           </>
         )}
 
-        {/* Payment Info */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment Info</Text>
-        <Card padding="md" style={styles.paymentCard}>
-          <View style={styles.paymentRow}>
-            <CreditCard size={18} color={colors.primary} />
-            <Text style={[styles.paymentMethod, { color: colors.text }]}>
-              {PAYMENT_METHOD_LABELS[order.paymentMethod]}
-            </Text>
-          </View>
-          {order.transactionId && (
-            <Text style={[styles.transactionId, { color: colors.textSecondary }]}>
-              Txn ID: {order.transactionId}
-            </Text>
-          )}
-          <Text style={[styles.paymentStatus, { color: isPaid ? colors.success : colors.warning }]}>
-            Payment: {order.paymentStatus}
-          </Text>
-        </Card>
+        {/* Payment Info (Hidden for Staff until Order Status is COMPLETED) */}
+        {(!isStaff || order.status === 'COMPLETED') && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment Info</Text>
+            <Card padding="md" style={styles.paymentCard}>
+              <View style={styles.paymentRow}>
+                <CreditCard size={18} color={colors.primary} />
+                {(order.status === 'COMPLETED' || order.paymentMethod !== 'COD') && (
+                  <Text style={[styles.paymentMethod, { color: colors.text }]}>
+                    Payment Method: {order.paymentMethod === 'COD' ? 'Cash on Delivery' : (PAYMENT_METHOD_LABELS[order.paymentMethod] || order.paymentMethod)}
+                  </Text>
+                )}
+              </View>
+              {order.paymentMethod !== 'COD' && Boolean(order.transactionId) && (
+                <Text style={[styles.transactionId, { color: colors.textSecondary }]}>
+                  Transaction ID: {order.transactionId}
+                </Text>
+              )}
+              <Text style={[styles.paymentStatus, { color: isPaid ? colors.success : colors.warning }]}>
+                Payment: {displayPaymentStatus}
+              </Text>
+            </Card>
+          </>
+        )}
 
-        {/* Summary Card */}
-        <Card padding="lg" style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Subtotal</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(order.totalAmount)}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Delivery</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(order.deliveryCharge)}</Text>
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryRow}>
-            <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Grand Total</Text>
-            <Text style={[styles.grandTotalValue, { color: colors.primary }]}>
-              {formatCurrency(order.grandTotal || order.totalAmount)}
-            </Text>
-          </View>
-        </Card>
+        {/* Comprehensive Price Breakdown Card */}
+        {(() => {
+          let originalSubtotal = 0;
+          let discountedSubtotal = 0;
+
+          (order.items || []).forEach((item) => {
+            const qty = item.quantity || 1;
+            const prod = item.product as any;
+            const itemPaidPrice = item.price ?? (item.subtotal ? item.subtotal / qty : 0);
+            const prodRegPrice = prod?.price || prod?.originalPrice || itemPaidPrice;
+            const prodDiscPrice = prod?.discountPrice ?? (itemPaidPrice < prodRegPrice ? itemPaidPrice : prodRegPrice);
+            
+            const regPrice = Math.max(prodRegPrice, itemPaidPrice);
+            const discPrice = Math.min(prodDiscPrice, itemPaidPrice);
+
+            originalSubtotal += regPrice * qty;
+            discountedSubtotal += discPrice * qty;
+          });
+
+          const totalProductSavings = Math.max(0, originalSubtotal - discountedSubtotal);
+          const rawSubtotal = discountedSubtotal > 0 ? discountedSubtotal : (order.totalAmount || 0);
+          const deliveryFee = rawSubtotal >= 2000 ? 0 : (order.deliveryCharge ?? 60);
+          const grandTotalVal = order.grandTotal ?? (rawSubtotal + deliveryFee);
+
+          return (
+            <Card padding="lg" style={styles.summaryCard}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}>
+                Price Breakdown
+              </Text>
+
+              {/* Itemized Products */}
+              <View style={{ gap: 6, marginBottom: 6 }}>
+                {(order.items || []).map((item, idx) => {
+                  const qty = item.quantity || 1;
+                  const prod = item.product as any;
+                  const itemPaidPrice = item.price ?? (item.subtotal ? item.subtotal / qty : 0);
+                  const prodRegPrice = prod?.price || prod?.originalPrice || itemPaidPrice;
+                  const prodDiscPrice = prod?.discountPrice ?? (itemPaidPrice < prodRegPrice ? itemPaidPrice : prodRegPrice);
+                  
+                  const regPrice = Math.max(prodRegPrice, itemPaidPrice);
+                  const discPrice = Math.min(prodDiscPrice, itemPaidPrice);
+                  const hasDiscount = discPrice < regPrice;
+
+                  return (
+                    <View key={item.id || idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text, flex: 1, marginRight: 8 }} numberOfLines={1}>
+                        {idx + 1}. {item.product?.name || item.productName || 'Product'} ({qty}x)
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {hasDiscount && (
+                          <Text style={{ fontSize: 11, color: colors.textTertiary, textDecorationLine: 'line-through' }}>
+                            {formatCurrency(regPrice * qty)}
+                          </Text>
+                        )}
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: hasDiscount ? colors.primary : colors.text }}>
+                          {formatCurrency(discPrice * qty)}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 8 }]} />
+
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Items Regular Subtotal</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>
+                  {formatCurrency(originalSubtotal > 0 ? originalSubtotal : rawSubtotal)}
+                </Text>
+              </View>
+
+              {totalProductSavings > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: '#10B981', fontWeight: '600' }]}>Product Discount Savings</Text>
+                  <Text style={[styles.summaryValue, { color: '#10B981', fontWeight: '700' }]}>
+                    -{formatCurrency(totalProductSavings)}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Delivery Charge</Text>
+                <Text style={[styles.summaryValue, { color: deliveryFee === 0 ? '#10B981' : colors.text }]}>
+                  {deliveryFee === 0 ? 'FREE' : formatCurrency(deliveryFee)}
+                </Text>
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+              <View style={styles.summaryRow}>
+                <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total Amount Paid</Text>
+                <Text style={[styles.grandTotalValue, { color: colors.primary }]}>
+                  {formatCurrency(grandTotalVal)}
+                </Text>
+              </View>
+            </Card>
+          );
+        })()}
 
         <Text style={[styles.orderDate, { color: colors.textSecondary }]}>
           Ordered on {formatDateTime(order.createdAt)}
         </Text>
 
+        {/* Admin Action Card (Order Details Page) */}
+        {isAdmin && (
+          (() => {
+            const hasTxnId = order.paymentMethod !== 'COD' && Boolean(order.transactionId && order.transactionId.trim().length > 0);
+            const isPending = normalizedStatus === 'PENDING';
+            const isNotFinished = !['COMPLETED', 'CANCELLED', 'RETURNED'].includes(normalizedStatus);
+
+            const showApproveOrVerify = isNotFinished && (isPending || (hasTxnId && normalizedPaymentStatus !== 'COMPLETED'));
+            const showReject = isNotFinished && (isPending || hasTxnId);
+
+            if (!showApproveOrVerify && !showReject && order.paymentMethod === 'COD') return null;
+
+            return (
+              <Card padding="md" style={{ marginTop: spacing.lg, gap: 10 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+                  Admin Actions
+                </Text>
+
+                {order.paymentMethod !== 'COD' && hasTxnId ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: colors.inputBg,
+                    padding: 10,
+                    borderRadius: radius.md,
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                      Payment Method: {PAYMENT_METHOD_LABELS[order.paymentMethod] || order.paymentMethod}
+                    </Text>
+                    <View style={{
+                      backgroundColor: colors.primary + '15',
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                    }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
+                        Transaction ID: {order.transactionId}
+                      </Text>
+                    </View>
+                  </View>
+                ) : order.paymentMethod !== 'COD' ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: colors.inputBg,
+                    padding: 10,
+                    borderRadius: radius.md,
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                      Payment Method: {PAYMENT_METHOD_LABELS[order.paymentMethod] || order.paymentMethod}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.warning, fontWeight: '600' }}>
+                      ⏳ Awaiting Payment
+                    </Text>
+                  </View>
+                ) : null}
+
+                {(showApproveOrVerify || showReject) && (
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                    {showApproveOrVerify && (
+                      <TouchableOpacity
+                        onPress={() => setIsAdminApproveModalOpen(true)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: '#10B981',
+                          paddingVertical: 12,
+                          paddingHorizontal: 12,
+                          borderRadius: 12,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700', textAlign: 'center' }}>
+                          {isPending
+                            ? '✓ Confirm Order'
+                            : hasTxnId
+                            ? '✓ Verify TxnID & Complete'
+                            : '✓ Complete Order'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {showReject && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setAdminRejectReason('Order rejected by Admin');
+                          setIsAdminRejectModalOpen(true);
+                        }}
+                        style={{
+                          flex: 1,
+                          backgroundColor: '#EF4444',
+                          paddingVertical: 12,
+                          paddingHorizontal: 12,
+                          borderRadius: 12,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700', textAlign: 'center' }}>
+                          ✕ Reject & Cancel
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </Card>
+            );
+          })()
+        )}
+
         {/* Cancel Button - Customer Only */}
         {canCancel && !isAdmin && (
           <Button
             title="Cancel Order"
-            onPress={handleCancel}
+            onPress={handleOpenCancelModal}
             variant="danger"
             loading={cancelling}
             leftIcon={<XCircle size={20} color="#FFFFFF" />}
@@ -439,22 +791,75 @@ export default function TrackOrderScreen() {
           />
         )}
 
-        {/* Accept or Return Order Buttons for Delivered Orders - Customer Only */}
-        {order.status === 'DELIVERED' && !isAdmin && (
+        {/* Delivered / Completed Order Actions */}
+        {(isDelivered || isCompleted) && !isAdmin && (
           <View style={{ gap: 12, marginTop: spacing.lg }}>
-            <Button
-              title="Accept Order"
-              onPress={handleAcceptOrder}
-              variant="primary"
-              leftIcon={<CheckCircle2 size={20} color="#FFFFFF" />}
-            />
-            <Button
-              title="Return Order / Report Issue"
-              onPress={handleOpenReturnModal}
-              variant="outline"
-              leftIcon={<RotateCcw size={20} color={colors.primary} />}
-              style={{ borderColor: colors.primary }}
-            />
+            {isCodActive && isDelivered && !isCompleted && (
+              <View style={{
+                backgroundColor: colors.inputBg,
+                borderColor: colors.primary,
+                borderWidth: 1.5,
+                padding: 14,
+                borderRadius: 14,
+                gap: 10,
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Banknote size={24} color={colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                      {order.paymentStatus === 'PAID' ? 'Cash Payment Submitted 💵' : 'Cash Payment 💵'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                      {order.paymentStatus === 'PAID'
+                        ? 'You submitted cash payment. Delivery staff will record and complete your order.'
+                        : 'Hand cash to the delivery staff and click below to confirm your cash payment.'}
+                    </Text>
+                  </View>
+                </View>
+
+                {order.paymentStatus !== 'PAID' && (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        await orderApi.payOrder(order.id, 'COD', `CASH-USER-PAID-${Date.now()}`);
+                        await load();
+                        showToast('success', 'Cash Payment Confirmed', 'Payment status updated to PAID! Delivery staff will record and complete your order.');
+                      } catch (err: any) {
+                        showToast('error', 'Error', getErrorMessage(err));
+                      }
+                    }}
+                    style={{
+                      backgroundColor: colors.primary,
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      borderRadius: radius.md,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                      💵 Confirm Cash Payment (Mark as PAID)
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {canPayNow && (
+              <Button
+                title={`Pay Now (${formatCurrency(order.grandTotal || order.totalAmount)})`}
+                onPress={handleOpenPayModal}
+                variant="primary"
+                leftIcon={<Wallet size={20} color="#FFFFFF" />}
+              />
+            )}
+            {canReturn && (
+              <Button
+                title="Return Request / Report Issue"
+                onPress={handleOpenReturnModal}
+                variant="outline"
+                leftIcon={<RotateCcw size={20} color={colors.primary} />}
+                style={{ borderColor: colors.primary }}
+              />
+            )}
           </View>
         )}
       </ScrollView>
@@ -524,7 +929,7 @@ export default function TrackOrderScreen() {
                               navigator.clipboard.writeText('01760049326');
                             }
                           } catch (e) {}
-                          Alert.alert('Copied', 'Send money number copied to clipboard!');
+                          showToast('info', 'Copied', 'Send money number copied to clipboard!');
                         }}
                         style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
                       >
@@ -560,54 +965,6 @@ export default function TrackOrderScreen() {
               </ScrollView>
             </View>
           </View>
-      </Modal>
-
-      {/* Accept Order Modal */}
-      <Modal
-        visible={isAcceptModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsAcceptModalOpen(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Accept Order Confirmation</Text>
-              <TouchableOpacity onPress={() => setIsAcceptModalOpen(false)} style={styles.modalCloseBtn}>
-                <X size={20} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-              Are you sure you want to accept this delivered order?
-            </Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-              <TouchableOpacity
-                onPress={() => setIsAcceptModalOpen(false)}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  backgroundColor: colors.inputBg,
-                }}
-              >
-                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmAcceptOrder}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  backgroundColor: colors.success,
-                }}
-              >
-                <Text style={{ color: '#FFF', fontWeight: '600' }}>
-                  Accept Order
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
       </Modal>
 
       {/* Success Modal */}
@@ -677,7 +1034,7 @@ export default function TrackOrderScreen() {
 
               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody} keyboardShouldPersistTaps="handled">
                 <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-                  Please select a reason and provide details to submit your return request for Order #{order.id.slice(-8).toUpperCase()}:
+                  Please select a reason and provide details to submit your return request for Order #{order.orderId || order.orderNumber || order.id}:
                 </Text>
 
                 <Text style={[styles.fieldLabel, { color: colors.text }]}>Reason for Return *</Text>
@@ -751,7 +1108,7 @@ export default function TrackOrderScreen() {
             </View>
 
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-              Order #{order.id.slice(-8).toUpperCase()} • {formatCurrency(order.grandTotal || order.totalAmount)}
+              Order #{order.orderId || order.orderNumber || order.id} • {formatCurrency(order.grandTotal || order.totalAmount)}
             </Text>
 
             <ScrollView style={{ maxHeight: 320, marginVertical: 12 }}>
@@ -792,6 +1149,241 @@ export default function TrackOrderScreen() {
           </View>
         </View>
       </Modal>
+      {/* Cancel Order Confirmation Modal */}
+      <Modal
+        visible={isCancelModalOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsCancelModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <XCircle size={22} color={colors.error} />
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Cancel Order</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsCancelModalOpen(false)} style={styles.modalCloseBtn}>
+                <X size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ paddingVertical: spacing.md }}>
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 20 }}>
+                Are you sure you want to cancel this order? This action cannot be undone.
+              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setIsCancelModalOpen(false)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: colors.inputBg,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>No, Keep Order</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleConfirmCancel}
+                  disabled={cancelling}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: colors.error,
+                    alignItems: 'center',
+                    opacity: cancelling ? 0.7 : 1,
+                  }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>
+                    {cancelling ? 'Cancelling...' : 'Yes, Cancel Order'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Admin Approve / Verify Confirmation Modal */}
+      {isAdmin && order && (
+        <Modal
+          visible={isAdminApproveModalOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsAdminApproveModalOpen(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface, padding: 20, borderRadius: 20 }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  {normalizedStatus === 'PENDING'
+                    ? 'Confirm Order'
+                    : order.paymentMethod !== 'COD' && Boolean(order.transactionId)
+                    ? 'Verify TxnID & Complete'
+                    : 'Complete Order'}
+                </Text>
+                <TouchableOpacity onPress={() => setIsAdminApproveModalOpen(false)} style={styles.modalCloseBtn}>
+                  <X size={20} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary, marginTop: 8 }]}>
+                {normalizedStatus === 'PENDING'
+                  ? 'Confirm this pending order so staff can be assigned for delivery? The customer will be notified.'
+                  : order.paymentMethod !== 'COD' && Boolean(order.transactionId)
+                  ? `Verify transaction ID "${order.transactionId}" and mark this order as COMPLETED?`
+                  : 'Mark this order as COMPLETED?'}
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                <TouchableOpacity
+                  onPress={() => setIsAdminApproveModalOpen(false)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: colors.inputBg,
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    setIsAdminSubmitting(true);
+                    try {
+                      const hasTxnId = order.paymentMethod !== 'COD' && Boolean(order.transactionId && order.transactionId.trim().length > 0);
+                      if (normalizedStatus === 'PENDING') {
+                        await adminApi.updateOrderStatus(order.id, 'CONFIRMED');
+                        showToast('success', 'Order Confirmed', 'Order status updated to CONFIRMED!');
+                      } else if (hasTxnId) {
+                        await adminApi.verifyPayment(order.id, true);
+                        showToast('success', 'Order Completed', 'Payment & TxnID Verified — Order is now COMPLETED!');
+                      } else {
+                        await adminApi.updateOrderStatus(order.id, 'COMPLETED');
+                        showToast('success', 'Order Completed', 'Order Status updated to COMPLETED!');
+                      }
+                      setIsAdminApproveModalOpen(false);
+                      await load();
+                    } catch (e) {
+                      showToast('error', 'Error', getErrorMessage(e));
+                    } finally {
+                      setIsAdminSubmitting(false);
+                    }
+                  }}
+                  disabled={isAdminSubmitting}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: colors.success,
+                    opacity: isAdminSubmitting ? 0.7 : 1,
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '600' }}>
+                    {isAdminSubmitting ? 'Processing...' : '✓ Confirm & Proceed'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Admin Reject Confirmation Modal */}
+      {isAdmin && order && (
+        <Modal
+          visible={isAdminRejectModalOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsAdminRejectModalOpen(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface, padding: 20, borderRadius: 20 }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Reject & Cancel Order</Text>
+                <TouchableOpacity onPress={() => setIsAdminRejectModalOpen(false)} style={styles.modalCloseBtn}>
+                  <X size={20} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary, marginTop: 8, marginBottom: 12 }]}>
+                Are you sure you want to reject this order / transaction? The order will be cancelled and the customer notified.
+              </Text>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: 10,
+                  color: colors.text,
+                  backgroundColor: colors.inputBg,
+                  marginBottom: 16,
+                }}
+                placeholder="Reason for rejection..."
+                placeholderTextColor={colors.textSecondary}
+                value={adminRejectReason}
+                onChangeText={setAdminRejectReason}
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setIsAdminRejectModalOpen(false)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: colors.inputBg,
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    setIsAdminSubmitting(true);
+                    try {
+                      const hasTxnId = order.paymentMethod !== 'COD' && Boolean(order.transactionId && order.transactionId.trim().length > 0);
+                      const reason = adminRejectReason.trim() ? `Order cancelled by admin: ${adminRejectReason.trim()}` : 'Order cancelled by admin';
+                      if (hasTxnId) {
+                        await adminApi.verifyPayment(order.id, false, reason);
+                      } else {
+                        await adminApi.updateOrderStatus(order.id, 'CANCELLED', reason);
+                      }
+                      setIsAdminRejectModalOpen(false);
+                      await load();
+                      showToast('success', 'Order Rejected', 'Order Rejected & Cancelled successfully.');
+                    } catch (e) {
+                      showToast('error', 'Error', getErrorMessage(e));
+                    } finally {
+                      setIsAdminSubmitting(false);
+                    }
+                  }}
+                  disabled={isAdminSubmitting}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: colors.error,
+                    opacity: isAdminSubmitting ? 0.7 : 1,
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '600' }}>
+                    {isAdminSubmitting ? 'Rejecting...' : '✕ Reject & Cancel'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Official Money Receipt Modal */}
+      <ReceiptModal
+        visible={isReceiptModalOpen}
+        order={order}
+        user={user}
+        onClose={() => setIsReceiptModalOpen(false)}
+      />
     </View>
   );
 }

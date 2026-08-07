@@ -9,10 +9,12 @@ import { Button } from '../../common/Button';
 import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { paymentMethodApi, SavedPaymentMethod } from '../services/paymentApi';
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
 
 export default function PaymentMethodsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   
   const [methods, setMethods] = useState<SavedPaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,13 +69,15 @@ export default function PaymentMethodsScreen() {
   return (
     <ScreenWrapper>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
-          <ArrowLeft size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Payment Methods</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={handleAddNew}>
-          <Plus size={24} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={[styles.headerInner, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
+          <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
+            <ArrowLeft size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.text }]}>Payment Methods</Text>
+          <TouchableOpacity style={styles.addBtn} onPress={handleAddNew}>
+            <Plus size={24} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -83,7 +87,7 @@ export default function PaymentMethodsScreen() {
       ) : (
         <ScrollView 
           style={styles.content}
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+          contentContainerStyle={{ padding: containerPadding, paddingBottom: spacing.xxl, maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           {methods.length === 0 ? (
@@ -143,13 +147,14 @@ export default function PaymentMethodsScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
+  },
+  headerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backBtn: {
     width: 44,

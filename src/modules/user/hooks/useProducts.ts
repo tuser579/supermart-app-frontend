@@ -6,6 +6,7 @@ import { Product, ProductListResponse } from '../../../shared/types/product.type
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState<ProductListResponse['meta'] | null>(null);
 
@@ -24,9 +25,10 @@ export function useProducts() {
     setError('');
     try {
       const response = await productApi.fetchProducts(params);
-      setProducts(response.data);
+      const filteredData = (response.data || []).filter((p) => (p as any).isActive !== false);
+      setProducts(filteredData);
       setPagination(response.meta);
-      return { success: true, data: response };
+      return { success: true, data: { ...response, data: filteredData } };
     } catch (err) {
       const msg = getErrorMessage(err);
       setError(msg);
@@ -47,22 +49,34 @@ export function useProducts() {
     page?: number;
     limit?: number;
   }) => {
+    if (loadingMore) return { success: false };
+    setLoadingMore(true);
     try {
       const response = await productApi.fetchProducts(params);
-      setProducts((prev) => [...prev, ...response.data]);
+      setProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newItems = (response.data || []).filter(
+          (p) => !existingIds.has(p.id) && (p as any).isActive !== false
+        );
+        return [...prev, ...newItems];
+      });
       setPagination(response.meta);
       return { success: true };
     } catch (err) {
       return { success: false, error: getErrorMessage(err) };
+    } finally {
+      setLoadingMore(false);
     }
-  }, []);
+  }, [loadingMore]);
 
   return {
     products,
     loading,
+    loadingMore,
     error,
     pagination,
     fetchProducts,
     loadMore,
   };
 }
+

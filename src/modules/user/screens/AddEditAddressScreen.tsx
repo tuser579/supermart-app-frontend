@@ -12,11 +12,13 @@ import { Loader } from '../../common/Loader';
 import { spacing } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { getErrorMessage } from '../../../shared/api/apiClient';
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
 
 export default function AddEditAddressScreen() {
   const router = useRouter();
   const { id, checkout } = useLocalSearchParams<{ id: string; checkout: string }>();
   const { colors } = useTheme();
+  const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   const isEdit = !!id;
   // checkout=true means this form was opened from checkout — show "Deliver Here" button only
   const isCheckoutMode = checkout === 'true';
@@ -99,7 +101,7 @@ export default function AddEditAddressScreen() {
   return (
     <ScreenWrapper scroll avoidKeyboard>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
           <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
             <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
@@ -110,7 +112,7 @@ export default function AddEditAddressScreen() {
         </View>
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
         <Card padding="lg" style={styles.formCard}>
           <Input
             label="Label (e.g. Home, Office)"
@@ -216,7 +218,6 @@ export default function AddEditAddressScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,

@@ -54,9 +54,13 @@ export interface Order {
   transactionId?: string;
   deliveryAddress?: AddressOnOrder;
   user?: { id: string; name: string; email: string; phone: string };
+  discount?: number;
+  notes?: string;
+  assignedStaffId?: string;
   assignedStaff?: { user: { name: string; phone: string } } | null;
   deliveredAt?: string;
   cancellationReason?: string;
+  cancelledBy?: 'CUSTOMER' | 'ADMIN' | string;
   returnReason?: string;
   returnDetails?: string;
   returnImages?: string[];

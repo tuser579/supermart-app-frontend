@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Camera, User, Phone } from 'lucide-react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
+import { showToast } from '../../common/Toast';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { ScreenWrapper } from '../../common/ScreenWrapper';
 import { Input } from '../../common/Input';
@@ -10,11 +11,13 @@ import { Button } from '../../common/Button';
 import { Card } from '../../common/Card';
 import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
 
 export default function EditProfileScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { user, updateProfile } = useAuth();
+  const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [profileImage, setProfileImage] = useState(user?.profileImage || '');
@@ -72,7 +75,7 @@ export default function EditProfileScreen() {
       const ImagePicker = await import('expo-image-picker');
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert('Permission Denied', 'Permission to access gallery is required to select a profile picture.');
+        showToast('warning', 'Permission Denied', 'Permission to access gallery is required to select a profile picture.');
         return;
       }
 
@@ -118,14 +121,16 @@ export default function EditProfileScreen() {
   return (
     <ScreenWrapper scroll avoidKeyboard>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
-          <ArrowLeft size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Edit Profile</Text>
-        <View style={{ width: 44 }} />
+        <View style={[styles.headerRow, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
+          <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
+            <ArrowLeft size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.text }]}>Edit Profile</Text>
+          <View style={{ width: 44 }} />
+        </View>
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
         <TouchableOpacity style={styles.avatarSection} onPress={handlePickImage} activeOpacity={0.8}>
           <View style={[styles.avatar, { backgroundColor: colors.primaryLight }]}>
             {profileImage ? (
@@ -177,13 +182,14 @@ export default function EditProfileScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backBtn: {
     width: 44,

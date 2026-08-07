@@ -12,10 +12,15 @@ import { typography } from '../../../shared/theme/typography';
 import { AdminDashboardStats, TopProduct } from '../../../shared/types/admin.types';
 import { formatCurrency } from '../../../shared/utils/formatters';
 
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+
 export default function AdminDashboardScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { logout } = useAuth();
+  const { isDesktop, isTablet, containerPadding, contentMaxWidth } = useResponsiveLayout();
+  const cardWidthStyle = { width: (isDesktop ? '23.5%' : isTablet ? '31%' : '48%') as any };
+
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [quickOptions, setQuickOptions] = useState<any>(null);
@@ -67,7 +72,7 @@ export default function AdminDashboardScreen() {
     { icon: ShoppingCart, label: 'Pending Orders', value: String(stats?.orders?.pending || 0), color: colors.warning, bg: colors.warningLight },
     { icon: Users, label: 'Users', value: String(stats?.users?.active || 0), color: colors.success, bg: colors.successLight },
     { icon: Briefcase, label: 'Staff', value: String(stats?.staff?.total || 0), color: '#9C27B0', bg: '#F3E5F5' },
-    { icon: Package, label: 'Products', value: String(stats?.products?.total || 0), color: colors.info || '#007AFF', bg: colors.infoLight || '#E5F1FF' },
+    { icon: Package, label: 'Products', value: String(stats?.products?.total || 0), color: '#007AFF', bg: '#E5F1FF' },
     { icon: List, label: 'Total Orders', value: String(stats?.orders?.total || 0), color: colors.primary, bg: colors.primaryLight },
     { icon: UserCheck, label: 'Assigned Orders', value: String(quickOptions?.assignedOrdersOptions?.totalAssignedOrders ?? (stats?.staff?.total || 0)), color: colors.success, bg: colors.successLight },
     { icon: AlertCircle, label: 'Out of Stock', value: String(quickOptions?.outOfStockOptions?.totalOutOfStock ?? (stats?.products?.outOfStock || 0)), color: colors.error, bg: colors.errorLight },
@@ -98,7 +103,7 @@ export default function AdminDashboardScreen() {
       <View style={styles.content}>
         <View style={styles.statsGrid}>
           {statCards.map((stat, index) => (
-            <Card key={index} padding="md" style={styles.statCard}>
+            <Card key={index} padding="md" style={[styles.statCard, cardWidthStyle]}>
               <View style={[styles.statIcon, { backgroundColor: stat.bg }]}>
                 <stat.icon size={22} color={stat.color} />
               </View>
@@ -108,7 +113,34 @@ export default function AdminDashboardScreen() {
           ))}
         </View>
 
+        {/* Cash on Payment System Analytics & Reports */}
+        <Card padding="lg" style={{ marginBottom: spacing.xl, backgroundColor: colors.surface }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md }}>
+            <DollarSign size={20} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>COD Financial Analytics</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1, backgroundColor: colors.warningLight, padding: spacing.md, borderRadius: radius.md }}>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: '500' }}>Pending COD</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.warning, marginTop: 4 }}>
+                {formatCurrency(stats?.cashPayment?.pendingCodAmount ?? quickOptions?.cashPaymentOptions?.pendingCodAmount ?? 0)}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>
+                {quickOptions?.cashPaymentOptions?.pendingCodOrders ?? 0} orders
+              </Text>
+            </View>
 
+            <View style={{ flex: 1, backgroundColor: colors.successLight, padding: spacing.md, borderRadius: radius.md }}>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: '500' }}>Collected COD</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.success, marginTop: 4 }}>
+                {formatCurrency(stats?.cashPayment?.collectedCodAmount ?? quickOptions?.cashPaymentOptions?.collectedCodAmount ?? 0)}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>
+                {stats?.cashPayment?.totalCodOrders ?? quickOptions?.cashPaymentOptions?.totalCodOrders ?? 0} total COD
+              </Text>
+            </View>
+          </View>
+        </Card>
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Top Products</Text>
         <Card padding="none" style={styles.topProductsCard}>
@@ -127,25 +159,25 @@ export default function AdminDashboardScreen() {
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
         <View style={styles.actionsRow}>
-          <Card padding="md" style={styles.actionCard}>
+          <Card padding="md" style={[styles.actionCard, cardWidthStyle]}>
             <TouchableOpacity onPress={() => router.push('/admin/products')} activeOpacity={0.8}>
               <Package size={24} color={colors.primary} />
               <Text style={[styles.actionLabel, { color: colors.text }]}>Products</Text>
             </TouchableOpacity>
           </Card>
-          <Card padding="md" style={styles.actionCard}>
+          <Card padding="md" style={[styles.actionCard, cardWidthStyle]}>
             <TouchableOpacity onPress={() => router.push('/admin/orders')} activeOpacity={0.8}>
               <ShoppingCart size={24} color={colors.primary} />
               <Text style={[styles.actionLabel, { color: colors.text }]}>Orders</Text>
             </TouchableOpacity>
           </Card>
-          <Card padding="md" style={styles.actionCard}>
+          <Card padding="md" style={[styles.actionCard, cardWidthStyle]}>
             <TouchableOpacity onPress={() => router.push('/admin/users')} activeOpacity={0.8}>
               <Users size={24} color={colors.primary} />
               <Text style={[styles.actionLabel, { color: colors.text }]}>Users</Text>
             </TouchableOpacity>
           </Card>
-          <Card padding="md" style={styles.actionCard}>
+          <Card padding="md" style={[styles.actionCard, cardWidthStyle]}>
             <TouchableOpacity onPress={() => router.push('/admin/reports')} activeOpacity={0.8}>
               <TrendingUp size={24} color={colors.primary} />
               <Text style={[styles.actionLabel, { color: colors.text }]}>Reports</Text>

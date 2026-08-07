@@ -10,11 +10,13 @@ import { Button } from '../../common/Button';
 import { Card } from '../../common/Card';
 import { spacing } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
+import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { changePassword } = useAuth();
+  const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   const [current, setCurrent] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -49,7 +51,7 @@ export default function ChangePasswordScreen() {
   return (
     <ScreenWrapper scroll avoidKeyboard>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
           <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
             <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
@@ -58,7 +60,7 @@ export default function ChangePasswordScreen() {
         </View>
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: containerPadding }]}>
         <Card padding="lg" style={styles.formCard}>
           <Input
             label="Current Password"
@@ -96,7 +98,6 @@ export default function ChangePasswordScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,

@@ -13,6 +13,7 @@ import { typography } from '../../../shared/theme/typography';
 import { AdminUser } from '../../../shared/types/admin.types';
 import { formatDate } from '../../../shared/utils/formatters';
 import { getErrorMessage } from '../../../shared/api/apiClient';
+import { showToast } from '../../common/Toast';
 
 function UserAvatarItem({ item, colors }: { item: AdminUser; colors: any }) {
   const [imageError, setImageError] = useState(false);
@@ -80,12 +81,13 @@ export default function UsersScreen() {
     );
     try {
       await adminApi.updateUserStatus(user.id, updatedStatus);
+      await load();
     } catch (e) {
       // Revert status on failure
       setUsers((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, isActive: user.isActive } : u))
       );
-      Alert.alert('Error', getErrorMessage(e));
+      showToast('error', 'Error', getErrorMessage(e));
     }
   };
 

@@ -1,3 +1,4 @@
+// app/_layout.tsx
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +13,9 @@ import { setTheme } from '@/src/shared/store/slices/themeSlice';
 import { setCart } from '@/src/shared/store/slices/cartSlice';
 import { useAppSelector } from '@/src/shared/hooks/useRedux';
 import { userApi } from '@/src/modules/user/services/userApi';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'; // 👈 ADD THIS
+import { View } from 'react-native'; // 👈 ADD THIS
+import { ToastProvider } from '@/src/modules/common/Toast';
 
 function RootContent() {
   useFrameworkReady();
@@ -81,7 +85,7 @@ function RootContent() {
   }, [isHydrated, isLoggedIn, user, segments]);
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#000' : '#fff' }}> {/* 👈 ADD THIS */}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
@@ -101,7 +105,7 @@ function RootContent() {
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-    </>
+    </SafeAreaView>
   );
 }
 
@@ -109,7 +113,11 @@ export default function RootLayout() {
   return (
     <Provider store={store}>
       <ThemeProvider>
-        <RootContent />
+        <SafeAreaProvider>
+          <ToastProvider>
+            <RootContent />
+          </ToastProvider>
+        </SafeAreaProvider>
       </ThemeProvider>
     </Provider>
   );

@@ -52,11 +52,14 @@ export function getErrorMessage(error: unknown): string {
       if (data.errors && data.errors.length > 0) {
         return data.errors.map((e) => `${e.field}: ${e.message}`).join(', ');
       }
-      return data.message || 'An error occurred';
+      return data.message || error.message || 'An error occurred';
     }
     if (error.request) {
-      return 'Network error. Please check your connection.';
+      return 'Network error. Please check your internet connection or server availability.';
     }
+    return error.message || 'Network error occurred';
+  }
+  if (error instanceof Error) {
     return error.message;
   }
   return 'An unexpected error occurred';

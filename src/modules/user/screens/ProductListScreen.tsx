@@ -11,6 +11,7 @@ import {
   TextInput,
   Switch,
   TouchableWithoutFeedback,
+  Pressable,
   Keyboard,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -19,6 +20,7 @@ import { useProducts } from '../hooks/useProducts';
 import { useCart } from '../hooks/useCart';
 import { useDebounce } from '../../../shared/hooks/useDebounce';
 import { ProductCard } from '../components/ProductCard';
+import { AddToCartSuccessModal } from '../components/AddToCartSuccessModal';
 import { SearchBar } from '../../common/SearchBar';
 import { Loader } from '../../common/Loader';
 import { EmptyState } from '../../common/EmptyState';
@@ -67,7 +69,7 @@ export default function ProductListScreen() {
   const { colors, isDark } = useTheme();
   const { fetchProducts, products, loading, pagination } = useProducts();
   const { addToCart } = useCart();
-  const { numColumns } = useResponsiveLayout() as any;
+  const { numColumns, isDesktop, isTablet, containerPadding } = useResponsiveLayout() as any;
   const flatListRef = useRef<FlatList>(null);
 
   // Search & Filter state
@@ -150,8 +152,16 @@ export default function ProductListScreen() {
     router.push(`/product/${product.id}`);
   };
 
-  const handleAddToCart = async (product: Product) => {
-    await addToCart(product, 1);
+  const [selectedProductForCart, setSelectedProductForCart] = useState<Product | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const handleAddToCartPress = (product: Product) => {
+    setSelectedProductForCart(product);
+    setShowAddModal(true);
+  };
+
+  const handleConfirmAddToCart = async (product: Product, quantity: number) => {
+    await addToCart(product, quantity);
   };
 
   const handlePageChange = (newPage: number) => {
@@ -338,45 +348,103 @@ export default function ProductListScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header Section */}
-      <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Search Products</Text>
-        <View style={styles.searchRow}>
-          <View style={{ flex: 1 }}>
-            <SearchBar
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search by name, brand..."
-            />
-          </View>
-          <TouchableOpacity
-            onPress={handleOpenFilterModal}
-            activeOpacity={0.7}
-            style={[
-              styles.filterBtn,
-              {
-                backgroundColor: activeFilterCount > 0 ? colors.primary : colors.inputBg,
-                borderColor: activeFilterCount > 0 ? colors.primary : colors.border,
-              },
-            ]}
-          >
-            <SlidersHorizontal
-              size={20}
-              color={activeFilterCount > 0 ? '#FFFFFF' : colors.text}
-            />
-            {activeFilterCount > 0 && (
-              <View style={styles.badgeCount}>
-                <Text style={styles.badgeCountText}>{activeFilterCount}</Text>
+      <View style={[
+        styles.header,
+        {
+          backgroundColor: colors.surface,
+          paddingHorizontal: isDesktop ? containerPadding : spacing.lg,
+        }
+      ]}>
+        {isDesktop ? (
+          // Desktop: horizontal row â€” title + result count on left, search + filter on right
+          <View style={styles.desktopHeaderRow}>
+            <View style={styles.desktopHeaderLeft}>
+              <Text style={[styles.title, { color: colors.text, marginBottom: 0 }]}>Search Products</Text>
+              {pagination && (
+                <Text style={[styles.desktopResultCount, { color: colors.textSecondary }]}>
+                  {pagination.total} results
+                </Text>
+              )}
+            </View>
+            <View style={styles.desktopHeaderRight}>
+              <View style={styles.desktopSearchBox}>
+                <SearchBar
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search by name, brand, category..."
+                />
               </View>
-            )}
-          </TouchableOpacity>
-        </View>
+              <TouchableOpacity
+                onPress={handleOpenFilterModal}
+                activeOpacity={0.7}
+                style={[
+                  styles.filterBtn,
+                  {
+                    backgroundColor: activeFilterCount > 0 ? colors.primary : colors.inputBg,
+                    borderColor: activeFilterCount > 0 ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <SlidersHorizontal
+                  size={20}
+                  color={activeFilterCount > 0 ? '#FFFFFF' : colors.text}
+                />
+                {activeFilterCount > 0 && (
+                  <View style={styles.badgeCount}>
+                    <Text style={styles.badgeCountText}>{activeFilterCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          // Mobile/tablet: stacked header
+          <>
+            <Text style={[styles.title, { color: colors.text }]}>Search Products</Text>
+            <View style={styles.searchRow}>
+              <View style={{ flex: 1 }}>
+                <SearchBar
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search by name, brand..."
+                />
+              </View>
+              <TouchableOpacity
+                onPress={handleOpenFilterModal}
+                activeOpacity={0.7}
+                style={[
+                  styles.filterBtn,
+                  {
+                    backgroundColor: activeFilterCount > 0 ? colors.primary : colors.inputBg,
+                    borderColor: activeFilterCount > 0 ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <SlidersHorizontal
+                  size={20}
+                  color={activeFilterCount > 0 ? '#FFFFFF' : colors.text}
+                />
+                {activeFilterCount > 0 && (
+                  <View style={styles.badgeCount}>
+                    <Text style={styles.badgeCountText}>{activeFilterCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
 
-
-
-      {/* Active Filters Display */}
+      {/* Active Filters chips row â€” all screen sizes */}
       {activeFilterCount > 0 && (
-        <View style={[styles.activeFiltersRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[
+          styles.activeFiltersRow,
+          {
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
+            paddingHorizontal: isDesktop ? containerPadding : 0,
+          }
+        ]}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -408,14 +476,11 @@ export default function ProductListScreen() {
 
             {(minPrice !== '' || maxPrice !== '') && (
               <TouchableOpacity
-                onPress={() => {
-                  setMinPrice('');
-                  setMaxPrice('');
-                }}
+                onPress={() => { setMinPrice(''); setMaxPrice(''); }}
                 style={[styles.activeTag, { backgroundColor: colors.primaryLight }]}
               >
                 <Text style={[styles.activeTagText, { color: colors.primary }]}>
-                  Price: ৳{minPrice || '0'} - ৳{maxPrice || '∞'}
+                  Price: BDT {minPrice || '0'} - {maxPrice || 'Any'}
                 </Text>
                 <X size={14} color={colors.primary} />
               </TouchableOpacity>
@@ -432,13 +497,7 @@ export default function ProductListScreen() {
             )}
 
             <TouchableOpacity
-              onPress={() => {
-                setSelectedCategory('');
-                setSortBy('createdAt');
-                setMinPrice('');
-                setMaxPrice('');
-                setInStockOnly(false);
-              }}
+              onPress={() => { setSelectedCategory(''); setSortBy('createdAt'); setMinPrice(''); setMaxPrice(''); setInStockOnly(false); }}
               style={styles.clearAllBtn}
             >
               <Text style={[styles.clearAllText, { color: colors.error }]}>Clear All</Text>
@@ -447,16 +506,22 @@ export default function ProductListScreen() {
         </View>
       )}
 
-      {/* Products Grid */}
+      {/* Products Grid â€” all screen sizes */}
       <FlatList
         ref={flatListRef}
         data={products}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ProductCard product={item} onPress={handleProductPress} onAddToCart={handleAddToCart} />}
+        renderItem={({ item }) => <ProductCard product={item} onPress={handleProductPress} onAddToCart={handleAddToCartPress} />}
         numColumns={numColumns || 2}
         key={numColumns || 2}
-        contentContainerStyle={styles.list}
-        columnWrapperStyle={styles.row}
+        contentContainerStyle={[
+          styles.list,
+          isDesktop && { paddingHorizontal: containerPadding },
+        ]}
+        columnWrapperStyle={[
+          styles.row,
+          isDesktop && { paddingHorizontal: 0, gap: 16 },
+        ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           loading ? (
@@ -472,212 +537,245 @@ export default function ProductListScreen() {
         ListFooterComponent={renderPagination()}
       />
 
-      {/* Filter Bottom Sheet Modal */}
       <Modal
         visible={isFilterModalOpen}
-        animationType="slide"
+        animationType={isDesktop ? 'fade' : 'slide'}
         transparent
         onRequestClose={() => setIsFilterModalOpen(false)}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-              {/* Modal Header */}
-              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <SlidersHorizontal size={20} color={colors.primary} />
-                  <Text style={[styles.modalTitle, { color: colors.text }]}>Filter Products</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setIsFilterModalOpen(false)}
-                  style={styles.closeBtn}
-                >
-                  <X size={22} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody}>
-                {/* Sort By Section */}
-                <View style={styles.filterSection}>
-                  <View style={styles.sectionHeader}>
-                    <ArrowUpDown size={18} color={colors.primary} />
-                    <Text style={[styles.filterSectionTitle, { color: colors.text }]}>Sort By</Text>
-                  </View>
-                  <View style={styles.sortGrid}>
-                    {SORT_OPTIONS.map((opt) => {
-                      const isSelected = tempSortBy === opt.id;
-                      return (
-                        <TouchableOpacity
-                          key={opt.id}
-                          onPress={() => setTempSortBy(opt.id)}
-                          style={[
-                            styles.sortOption,
-                            {
-                              backgroundColor: isSelected ? colors.primaryLight : colors.inputBg,
-                              borderColor: isSelected ? colors.primary : colors.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.sortOptionText,
-                              { color: isSelected ? colors.primary : colors.text },
-                            ]}
-                          >
-                            {opt.label}
-                          </Text>
-                          {isSelected && <Check size={16} color={colors.primary} />}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* Categories Section */}
-                {categories.length > 0 && (
-                  <View style={styles.filterSection}>
-                    <View style={styles.sectionHeader}>
-                      <Tag size={18} color={colors.primary} />
-                      <Text style={[styles.filterSectionTitle, { color: colors.text }]}>
-                        Category
-                      </Text>
+        <View style={[styles.modalOverlay, isDesktop && styles.modalOverlayDesktop]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setIsFilterModalOpen(false)}
+          />
+          <Pressable
+            style={[
+              styles.modalContent,
+              { backgroundColor: colors.surface },
+              isDesktop && styles.modalContentDesktop,
+            ]}
+            onPress={(e) => e.stopPropagation?.()}
+          >
+                {/* Modal Header */}
+                <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={[styles.modalIconWrap, { backgroundColor: colors.primaryLight }]}>
+                      <SlidersHorizontal size={16} color={colors.primary} />
                     </View>
-                    <View style={styles.modalCategoryWrap}>
-                      <TouchableOpacity
-                        onPress={() => setTempCategory('')}
-                        style={[
-                          styles.catPill,
-                          {
-                            backgroundColor: tempCategory === '' ? colors.primary : colors.inputBg,
-                            borderColor: tempCategory === '' ? colors.primary : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.catPillText,
-                            { color: tempCategory === '' ? '#FFFFFF' : colors.text },
-                          ]}
-                        >
-                          All Categories
-                        </Text>
-                      </TouchableOpacity>
+                    <Text style={[styles.modalTitle, { color: colors.text }]}>Filter Products</Text>
+                    {activeFilterCount > 0 && (
+                      <View style={[styles.filterBadge, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.filterBadgeText}>{activeFilterCount} active</Text>
+                      </View>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setIsFilterModalOpen(false)}
+                    style={[styles.closeBtn, { backgroundColor: colors.inputBg }]}
+                  >
+                    <X size={18} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
 
-                      {categories.map((cat) => {
-                        const isSelected = tempCategory === cat;
-                        return (
+                {/* Modal Body â€” 2-col grid on desktop, single col on mobile */}
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  style={styles.modalBody}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View style={isDesktop ? styles.desktopModalGrid : undefined}>
+
+                    {/* Sort By Section */}
+                    <View style={[styles.filterSection, isDesktop && styles.desktopFilterSection, { borderBottomColor: colors.border }]}>
+                      <View style={styles.sectionHeader}>
+                        <ArrowUpDown size={18} color={colors.primary} />
+                        <Text style={[styles.filterSectionTitle, { color: colors.text }]}>Sort By</Text>
+                      </View>
+                      <View style={isDesktop ? styles.sortGridDesktop : styles.sortGrid}>
+                        {SORT_OPTIONS.map((opt) => {
+                          const isSelected = tempSortBy === opt.id;
+                          return (
+                            <TouchableOpacity
+                              key={opt.id}
+                              onPress={() => setTempSortBy(opt.id)}
+                              style={[
+                                styles.sortOption,
+                                {
+                                  backgroundColor: isSelected ? colors.primaryLight : colors.inputBg,
+                                  borderColor: isSelected ? colors.primary : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.sortOptionText,
+                                  { color: isSelected ? colors.primary : colors.text },
+                                ]}
+                              >
+                                {opt.label}
+                              </Text>
+                              {isSelected && <Check size={16} color={colors.primary} />}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {/* Categories Section */}
+                    {categories.length > 0 && (
+                      <View style={[styles.filterSection, isDesktop && styles.desktopFilterSection, { borderBottomColor: colors.border }]}>
+                        <View style={styles.sectionHeader}>
+                          <Tag size={18} color={colors.primary} />
+                          <Text style={[styles.filterSectionTitle, { color: colors.text }]}>
+                            Category
+                          </Text>
+                        </View>
+                        <View style={styles.modalCategoryWrap}>
                           <TouchableOpacity
-                            key={cat}
-                            onPress={() => setTempCategory(isSelected ? '' : cat)}
+                            onPress={() => setTempCategory('')}
                             style={[
                               styles.catPill,
                               {
-                                backgroundColor: isSelected ? colors.primary : colors.inputBg,
-                                borderColor: isSelected ? colors.primary : colors.border,
+                                backgroundColor: tempCategory === '' ? colors.primary : colors.inputBg,
+                                borderColor: tempCategory === '' ? colors.primary : colors.border,
                               },
                             ]}
                           >
                             <Text
                               style={[
                                 styles.catPillText,
-                                { color: isSelected ? '#FFFFFF' : colors.text },
+                                { color: tempCategory === '' ? '#FFFFFF' : colors.text },
                               ]}
                             >
-                              {cat}
+                              All
                             </Text>
                           </TouchableOpacity>
-                        );
-                      })}
+
+                          {categories.map((cat) => {
+                            const isSelected = tempCategory === cat;
+                            return (
+                              <TouchableOpacity
+                                key={cat}
+                                onPress={() => setTempCategory(isSelected ? '' : cat)}
+                                style={[
+                                  styles.catPill,
+                                  {
+                                    backgroundColor: isSelected ? colors.primary : colors.inputBg,
+                                    borderColor: isSelected ? colors.primary : colors.border,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.catPillText,
+                                    { color: isSelected ? '#FFFFFF' : colors.text },
+                                  ]}
+                                >
+                                  {cat}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Price Range Section */}
+                    <View style={[styles.filterSection, isDesktop && styles.desktopFilterSection, { borderBottomColor: colors.border }]}>
+                      <View style={styles.sectionHeader}>
+                        <DollarSign size={18} color={colors.primary} />
+                        <Text style={[styles.filterSectionTitle, { color: colors.text }]}>
+                          Price Range (BDT)
+                        </Text>
+                      </View>
+                      <View style={styles.priceRow}>
+                        <TextInput
+                          style={[
+                            styles.priceInput,
+                            {
+                              backgroundColor: colors.inputBg,
+                              borderColor: colors.border,
+                              color: colors.text,
+                            },
+                          ]}
+                          placeholder="Min Price"
+                          placeholderTextColor={colors.textTertiary}
+                          keyboardType="numeric"
+                          value={tempMinPrice}
+                          onChangeText={setTempMinPrice}
+                        />
+                        <Text style={[styles.priceDash, { color: colors.textSecondary }]}>to</Text>
+                        <TextInput
+                          style={[
+                            styles.priceInput,
+                            {
+                              backgroundColor: colors.inputBg,
+                              borderColor: colors.border,
+                              color: colors.text,
+                            },
+                          ]}
+                          placeholder="Max Price"
+                          placeholderTextColor={colors.textTertiary}
+                          keyboardType="numeric"
+                          value={tempMaxPrice}
+                          onChangeText={setTempMaxPrice}
+                        />
+                      </View>
                     </View>
-                  </View>
-                )}
 
-                {/* Price Range Section */}
-                <View style={styles.filterSection}>
-                  <View style={styles.sectionHeader}>
-                    <DollarSign size={18} color={colors.primary} />
-                    <Text style={[styles.filterSectionTitle, { color: colors.text }]}>
-                      Price Range (৳)
-                    </Text>
+                    {/* In Stock Only Switch */}
+                    <View style={[styles.filterSection, styles.switchRow, isDesktop && styles.desktopFilterSection, { borderBottomWidth: 0 }]}>
+                      <View style={styles.sectionHeader}>
+                        <Package size={18} color={colors.primary} />
+                        <Text style={[styles.filterSectionTitle, { color: colors.text }]}>
+                          In-Stock Only
+                        </Text>
+                      </View>
+                      <Switch
+                        value={tempInStockOnly}
+                        onValueChange={setTempInStockOnly}
+                        trackColor={{ false: colors.border, true: colors.primary }}
+                        thumbColor="#FFFFFF"
+                      />
+                    </View>
+
                   </View>
-                  <View style={styles.priceRow}>
-                    <TextInput
-                      style={[
-                        styles.priceInput,
-                        {
-                          backgroundColor: colors.inputBg,
-                          borderColor: colors.border,
-                          color: colors.text,
-                        },
-                      ]}
-                      placeholder="Min Price"
-                      placeholderTextColor={colors.textTertiary}
-                      keyboardType="numeric"
-                      value={tempMinPrice}
-                      onChangeText={setTempMinPrice}
-                    />
-                    <Text style={[styles.priceDash, { color: colors.textSecondary }]}>-</Text>
-                    <TextInput
-                      style={[
-                        styles.priceInput,
-                        {
-                          backgroundColor: colors.inputBg,
-                          borderColor: colors.border,
-                          color: colors.text,
-                        },
-                      ]}
-                      placeholder="Max Price"
-                      placeholderTextColor={colors.textTertiary}
-                      keyboardType="numeric"
-                      value={tempMaxPrice}
-                      onChangeText={setTempMaxPrice}
-                    />
+                </ScrollView>
+
+                {/* Modal Footer */}
+                <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+                  <TouchableOpacity
+                    onPress={handleResetFilters}
+                    style={[styles.resetBtn, { borderColor: colors.border }]}
+                  >
+                    <RotateCcw size={16} color={colors.textSecondary} />
+                    <Text style={[styles.resetBtnText, { color: colors.textSecondary }]}>Reset</Text>
+                  </TouchableOpacity>
+
+                  <View style={{ flex: 1 }}>
+                    <Button title="Apply Filters" onPress={handleApplyFilters} size="md" />
                   </View>
                 </View>
-
-                {/* In Stock Only Switch */}
-                <View style={[styles.filterSection, styles.switchRow]}>
-                  <View style={styles.sectionHeader}>
-                    <Package size={18} color={colors.primary} />
-                    <Text style={[styles.filterSectionTitle, { color: colors.text }]}>
-                      In-Stock Only
-                    </Text>
-                  </View>
-                  <Switch
-                    value={tempInStockOnly}
-                    onValueChange={setTempInStockOnly}
-                    trackColor={{ false: colors.border, true: colors.primary }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-              </ScrollView>
-
-              {/* Modal Footer */}
-              <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
-                <TouchableOpacity
-                  onPress={handleResetFilters}
-                  style={[styles.resetBtn, { borderColor: colors.border }]}
-                >
-                  <RotateCcw size={16} color={colors.textSecondary} />
-                  <Text style={[styles.resetBtnText, { color: colors.textSecondary }]}>Reset</Text>
-                </TouchableOpacity>
-
-                <View style={{ flex: 1 }}>
-                  <Button title="Apply Filters" onPress={handleApplyFilters} size="md" />
-                </View>
-              </View>
+              </Pressable>
             </View>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+          </Modal>
+
+      <AddToCartSuccessModal
+        visible={showAddModal}
+        product={selectedProductForCart}
+        onClose={() => setShowAddModal(false)}
+        onConfirmAdd={handleConfirmAddToCart}
+        onViewCart={() => router.push('/(tabs)/cart')}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  // â”€â”€â”€ Header â”€â”€â”€
   header: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
     elevation: 2,
@@ -687,6 +785,35 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   title: { ...typography.h4, marginBottom: spacing.xs },
+  // Desktop header
+  desktopHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 20,
+  },
+  desktopHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+    flexShrink: 0,
+  },
+  desktopResultCount: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  desktopHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  desktopSearchBox: {
+    flex: 1,
+    maxWidth: 480,
+  },
+  // Mobile/tablet header
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -719,31 +846,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-  categoryBar: {
-    borderBottomWidth: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    width: '100%',
-  },
-  categoryWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    alignItems: 'center',
-  },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    includeFontPadding: false,
-  },
+
+  // â”€â”€â”€ Active filters chips â”€â”€â”€
   activeFiltersRow: {
     borderBottomWidth: 1,
     paddingVertical: spacing.xs,
@@ -778,10 +882,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+
+  // â”€â”€â”€ Product grid â”€â”€â”€
   list: { paddingBottom: 100, paddingTop: spacing.md },
   row: { paddingHorizontal: 8 },
+  categoryBar: {
+    borderBottomWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
+  categoryWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+  },
+  categoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    includeFontPadding: false,
+  },
 
-  // Pagination Controls Styles
+  // â”€â”€â”€ Pagination â”€â”€â”€
   paginationContainer: {
     marginHorizontal: spacing.md,
     marginTop: spacing.lg,
@@ -839,38 +970,92 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
 
-  // Modal styles
+  // ——— Modal — shared ———
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
   },
+  // Desktop: centered dialog overlay
+  modalOverlayDesktop: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Mobile: bottom sheet
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
-    paddingBottom: 24,
+    maxHeight: '88%',
+  },
+  // Desktop: centered rounded dialog
+  modalContentDesktop: {
+    borderRadius: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    width: '82%',
+    maxWidth: 740,
+    maxHeight: '82%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 30,
+    elevation: 14,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: 16,
     borderBottomWidth: 1,
+  },
+  modalIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
     ...typography.h4,
   },
+  filterBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  filterBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   closeBtn: {
-    padding: spacing.xs,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalBody: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  // Desktop modal: 2-column grid layout
+  desktopModalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+  },
+  desktopFilterSection: {
+    flex: 1,
+    minWidth: 260,
+    marginBottom: spacing.md,
   },
   filterSection: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -883,6 +1068,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sortGrid: {
+    gap: 8,
+  },
+  // Desktop: sort options in 2 columns
+  sortGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   sortOption: {
@@ -943,6 +1134,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
     borderTopWidth: 1,
   },
   resetBtn: {

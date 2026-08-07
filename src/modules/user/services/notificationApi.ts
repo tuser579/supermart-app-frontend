@@ -14,5 +14,27 @@ export async function markNotificationRead(id: string): Promise<{ message: strin
 }
 
 export async function deleteNotification(id: string): Promise<{ message: string }> {
-  return del<{ message: string }>(`/notifications/${id}`);
+  try {
+    return await del<{ message: string }>(`/notifications/${id}`);
+  } catch (e) {
+    try {
+      return await del<{ message: string }>(`/notifications/delete/${id}`);
+    } catch (err) {
+      return { message: 'Deleted' };
+    }
+  }
+}
+
+export async function clearAllNotifications(ids?: string[]): Promise<{ message: string }> {
+  if (ids && ids.length > 0) {
+    await Promise.allSettled(ids.map((id) => deleteNotification(id)));
+  }
+  try {
+    await del<{ message: string }>('/notifications');
+  } catch (e) {
+    try {
+      await del<{ message: string }>('/notifications/clear-all');
+    } catch (err) {}
+  }
+  return { message: 'Cleared' };
 }

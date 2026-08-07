@@ -13,6 +13,7 @@ import { Loader } from '../../common/Loader';
 import { spacing } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { getErrorMessage } from '../../../shared/api/apiClient';
+import { showToast } from '../../common/Toast';
 
 export default function AddEditProductScreen() {
   const router = useRouter();
@@ -108,12 +109,16 @@ export default function AddEditProductScreen() {
 
       if (isEdit && id) {
         await adminApi.updateProduct(id, payload);
+        showToast('success', 'Product Updated', 'Product changes saved to database.');
       } else {
         await adminApi.createProduct(payload);
+        showToast('success', 'Product Created', 'New product saved to database.');
       }
       router.back();
     } catch (e) {
-      setError(getErrorMessage(e));
+      const msg = getErrorMessage(e);
+      setError(msg);
+      showToast('error', 'Error', msg);
     } finally {
       setSaving(false);
     }
