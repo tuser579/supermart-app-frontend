@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Store,
@@ -78,9 +78,10 @@ export function DesktopFooter() {
         {/* Column 1: Brand & Contact */}
         <View style={styles.brandCol}>
           <TouchableOpacity style={styles.logoRow} onPress={() => router.push('/')} activeOpacity={0.8}>
-            <View style={[styles.logoBadge, { backgroundColor: colors.primary }]}>
-              <Store size={22} color="#FFFFFF" />
-            </View>
+            <Image
+              source={require('../../../assets/images/play_store_512.png')}
+              style={{ width: 42, height: 42, borderRadius: 10, resizeMode: 'contain' }}
+            />
             <Text style={[styles.brandTitle, { color: colors.text }]}>SuperMart</Text>
           </TouchableOpacity>
 

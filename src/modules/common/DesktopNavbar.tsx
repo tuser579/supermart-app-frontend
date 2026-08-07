@@ -51,9 +51,10 @@ export function DesktopNavbar() {
           onPress={() => router.push('/')}
           activeOpacity={0.8}
         >
-          <View style={[styles.logoBadge, { backgroundColor: colors.primary }]}>
-            <Store size={22} color="#FFFFFF" />
-          </View>
+          <Image
+            source={require('../../../assets/images/play_store_512.png')}
+            style={{ width: 42, height: 42, borderRadius: 10, resizeMode: 'contain' }}
+          />
           <View>
             <Text style={[styles.brandTitle, { color: colors.text }]}>SuperMart</Text>
             <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>
@@ -100,7 +101,6 @@ export function DesktopNavbar() {
             );
           })}
         </View>
-
         {/* Right Side Actions */}
         <View style={styles.rightActionsRow}>
           {/* Notifications button */}
