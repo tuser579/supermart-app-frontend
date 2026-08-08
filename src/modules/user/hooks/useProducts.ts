@@ -3,12 +3,16 @@ import * as productApi from '../services/productApi';
 import { getErrorMessage } from '../../../shared/api/apiClient';
 import { Product, ProductListResponse } from '../../../shared/types/product.types';
 
+// Global module-level memory cache for instant tab transitions
+let globalProductsCache: Product[] = [];
+let globalPaginationCache: ProductListResponse['meta'] | null = null;
+
 export function useProducts() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState<Product[]>(globalProductsCache);
+  const [loading, setLoading] = useState(globalProductsCache.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
-  const [pagination, setPagination] = useState<ProductListResponse['meta'] | null>(null);
+  const [pagination, setPagination] = useState<ProductListResponse['meta'] | null>(globalPaginationCache);
 
   const fetchProducts = useCallback(async (params?: {
     search?: string;
@@ -21,11 +25,16 @@ export function useProducts() {
     page?: number;
     limit?: number;
   }) => {
-    setLoading(true);
+    // Only trigger full-screen loading state if we have zero cached items
+    if (globalProductsCache.length === 0) {
+      setLoading(true);
+    }
     setError('');
     try {
       const response = await productApi.fetchProducts(params);
       const filteredData = (response.data || []).filter((p) => (p as any).isActive !== false);
+      globalProductsCache = filteredData;
+      globalPaginationCache = response.meta;
       setProducts(filteredData);
       setPagination(response.meta);
       return { success: true, data: { ...response, data: filteredData } };

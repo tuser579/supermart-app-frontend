@@ -53,6 +53,8 @@ const TABS: { label: string; value: string | null }[] = [
   { label: 'Returned', value: 'RETURNED' },
 ];
 
+let globalOrdersCache: Order[] = [];
+
 export default function OrdersScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -60,8 +62,8 @@ export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
   const { contentMaxWidth, containerPadding, isDesktop } = useResponsiveLayout() as any;
 
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<Order[]>(globalOrdersCache);
+  const [loading, setLoading] = useState(globalOrdersCache.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,20 +76,20 @@ export default function OrdersScreen() {
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<Order | null>(null);
 
   const load = useCallback(async (status?: string | null) => {
-    setLoading(true);
+    if (globalOrdersCache.length === 0) {
+      setLoading(true);
+    }
     try {
       const response = await orderApi.fetchOrders({ status: status || undefined, limit: 50 });
-      setOrders(response.data);
+      const fetched = response.data || [];
+      globalOrdersCache = fetched;
+      setOrders(fetched);
     } catch (e) {
       // ignore
     } finally {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    load(activeTab);
-  }, [load, activeTab]);
 
   useFocusEffect(
     useCallback(() => {

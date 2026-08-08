@@ -51,18 +51,18 @@ export default function ProductDetailScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      const [p, userWishlist] = await Promise.all([
-        productApi.fetchProductById(id),
-        wishlistApi.getWishlist().catch(() => []),
-      ]);
+      const p = await productApi.fetchProductById(id);
       setProduct(p);
       if (p.reviews) setReviews(p.reviews);
-      if (userWishlist && Array.isArray(userWishlist)) {
-        setIsSaved(userWishlist.some((w) => w.productId === id));
-      }
+      setLoading(false);
+
+      // Async fetch wishlist in background without blocking UI
+      wishlistApi.getWishlist().then((userWishlist) => {
+        if (userWishlist && Array.isArray(userWishlist)) {
+          setIsSaved(userWishlist.some((w) => w.productId === id));
+        }
+      }).catch(() => {});
     } catch (e) {
-      // handle error
-    } finally {
       setLoading(false);
     }
   }, [id]);

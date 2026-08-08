@@ -61,7 +61,7 @@ export default function CartScreen() {
     removeCouponCode,
   } = useCart();
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(items.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [inputCoupon, setInputCoupon] = useState('');
   const [couponError, setCouponError] = useState('');
