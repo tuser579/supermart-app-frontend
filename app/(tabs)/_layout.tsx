@@ -5,6 +5,7 @@ import { useTheme } from '@/src/shared/hooks/useTheme';
 import { useAppSelector } from '@/src/shared/hooks/useRedux';
 import { useResponsiveLayout } from '@/src/shared/hooks/useResponsiveLayout';
 import { DesktopNavbar } from '@/src/modules/common/DesktopNavbar';
+import { CustomTabBar } from '@/src/modules/common/CustomTabBar';
 
 export default function TabLayout() {
   const { colors } = useTheme();
@@ -15,23 +16,13 @@ export default function TabLayout() {
     <View style={{ flex: 1 }}>
       {isDesktop && <DesktopNavbar />}
       <Tabs
+        tabBar={(props) =>
+          isDesktop ? null : <CustomTabBar {...props} />
+        }
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.iconActive,
           tabBarInactiveTintColor: colors.icon,
-          tabBarStyle: {
-            backgroundColor: colors.tabBar,
-            borderTopColor: colors.tabBarBorder,
-            borderTopWidth: 1,
-            height: isDesktop ? 0 : 60,
-            display: isDesktop ? 'none' : 'flex',
-            paddingBottom: 8,
-            paddingTop: 8,
-          },
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
-          },
         }}
       >
         <Tabs.Screen

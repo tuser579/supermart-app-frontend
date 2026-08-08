@@ -39,6 +39,14 @@ export default function RegisterScreen() {
       setError('Password must be at least 8 characters');
       return;
     }
+    if (!/[A-Z]/.test(password)) {
+      setError('Password must contain at least one uppercase letter (A-Z)');
+      return;
+    }
+    if (!/[@$!%*?&]/.test(password)) {
+      setError('Password must contain at least one special character (@$!%*?&)');
+      return;
+    }
     setError('');
     setLoading(true);
     const result = await register({ name, email, phone, password });
@@ -171,7 +179,7 @@ export default function RegisterScreen() {
               label="Password"
               value={password}
               onChangeText={setPassword}
-              placeholder="Min 8 chars"
+              placeholder="Min 8 chars, 1 uppercase, 1 special (@$!%*?&)"
               secureEntry
               leftIcon={<Lock size={20} color={colors.textSecondary} />}
             />

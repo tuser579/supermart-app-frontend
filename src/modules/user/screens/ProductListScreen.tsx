@@ -43,6 +43,7 @@ import { typography } from '../../../shared/theme/typography';
 import { Product } from '../../../shared/types/product.types';
 import * as productApi from '../services/productApi';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type SortOption = 'createdAt' | 'price_asc' | 'price_desc' | 'rating';
 
@@ -67,6 +68,7 @@ const DEFAULT_CATEGORIES = [
 export default function ProductListScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { fetchProducts, products, loading, pagination } = useProducts();
   const { addToCart } = useCart();
   const { numColumns, isDesktop, isTablet, containerPadding } = useResponsiveLayout() as any;
@@ -353,6 +355,7 @@ export default function ProductListScreen() {
         {
           backgroundColor: colors.surface,
           paddingHorizontal: isDesktop ? containerPadding : spacing.lg,
+          paddingTop: Math.max(insets.top, 12),
         }
       ]}>
         {isDesktop ? (

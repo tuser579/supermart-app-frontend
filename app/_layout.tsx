@@ -85,7 +85,7 @@ function RootContent() {
   }, [isHydrated, isLoggedIn, user, segments]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#000' : '#fff' }}> {/* 👈 ADD THIS */}
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: isDark ? '#000' : '#fff' }}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />

@@ -30,20 +30,18 @@ export default function LoginScreen() {
     }
     setError('');
     setLoading(true);
-    try {
-      await login({ email, password });
-      setLoading(false);
-      const emailLower = email.toLowerCase().trim();
-      if (emailLower.includes('admin')) {
+    const result = await login({ email, password });
+    setLoading(false);
+    if (result.success && result.user) {
+      if (result.user.role === 'ADMIN') {
         router.replace('/admin/dashboard');
-      } else if (emailLower.includes('staff')) {
+      } else if (result.user.role === 'STAFF') {
         router.replace('/staff/dashboard');
       } else {
         router.replace('/(tabs)');
       }
-    } catch (e) {
-      setLoading(false);
-      router.replace('/(tabs)');
+    } else {
+      setError(result.error || 'Invalid email or password');
     }
   };
 

@@ -37,6 +37,7 @@ import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { Order } from '../../../shared/types/order.types';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TABS: { label: string; value: string | null }[] = [
   { label: 'All Orders', value: null },
@@ -56,6 +57,7 @@ export default function OrdersScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const { contentMaxWidth, containerPadding, isDesktop } = useResponsiveLayout() as any;
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -167,6 +169,7 @@ export default function OrdersScreen() {
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             paddingHorizontal: containerPadding,
+            paddingTop: Math.max(insets.top, 12),
           },
         ]}
       >

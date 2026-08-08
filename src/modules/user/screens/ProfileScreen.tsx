@@ -29,11 +29,13 @@ import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { ThemeMode } from '../../../shared/theme/theme';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { colors, isDark, mode, setTheme } = useTheme();
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
   const { contentMaxWidth, containerPadding, isDesktop, isTablet } = useResponsiveLayout() as any;
   const isLargeScreen = isTablet || isDesktop;
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -89,7 +91,7 @@ export default function ProfileScreen() {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
     >
-      <View style={{ width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center', paddingHorizontal: containerPadding, paddingVertical: spacing.lg }}>
+      <View style={{ width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center', paddingHorizontal: containerPadding, paddingTop: Math.max(insets.top + 8, spacing.lg), paddingBottom: spacing.lg }}>
         
         {/* Top Profile Hero Card */}
         <Card

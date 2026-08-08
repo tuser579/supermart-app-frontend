@@ -27,6 +27,7 @@ import { Product, Review } from '../../../shared/types/product.types';
 import { formatCurrency, getDiscountPercentage, getEffectivePrice } from '../../../shared/utils/formatters';
 import { AddToCartSuccessModal } from '../components/AddToCartSuccessModal';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -34,6 +35,7 @@ export default function ProductDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { contentMaxWidth, containerPadding } = useResponsiveLayout();
   const { addToCart } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
@@ -108,7 +110,7 @@ export default function ProductDetailScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={{ maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }}>
-          <View style={[styles.header, { backgroundColor: colors.surface, paddingHorizontal: containerPadding }]}>
+          <View style={[styles.header, { backgroundColor: colors.surface, paddingHorizontal: containerPadding, paddingTop: Math.max(insets.top, 8) }]}>
             <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.inputBg }]}>
               <ArrowLeft size={22} color={colors.text} />
             </TouchableOpacity>

@@ -35,12 +35,14 @@ import { spacing, radius } from '../../../shared/theme/spacing';
 import { typography } from '../../../shared/theme/typography';
 import { formatCurrency } from '../../../shared/utils/formatters';
 import { useResponsiveLayout } from '../../../shared/hooks/useResponsiveLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const FREE_DELIVERY_THRESHOLD = 2000;
 
 export default function CartScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const {
     items,
     totalAmount,
@@ -283,6 +285,7 @@ export default function CartScreen() {
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
               paddingHorizontal: containerPadding,
+              paddingTop: Math.max(insets.top, 12),
             },
           ]}
         >
