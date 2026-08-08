@@ -10,8 +10,7 @@ export function useResponsiveLayout() {
 
   let numColumns = 2; // default for mobile grids
   if (isTablet) numColumns = 3;
-  if (isDesktop) numColumns = 4;
-  if (isLargeDesktop) numColumns = 5;
+  if (isDesktop) numColumns = 4; // 4 products per row on desktop
 
   const contentMaxWidth = 1280;
   
