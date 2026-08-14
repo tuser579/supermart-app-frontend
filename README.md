@@ -41,7 +41,7 @@
    │ • Multi-filter Search │     │ • Product/Category    │     │ • Assigned Orders     │
    │ • Redux Cart & Promo  │     │   CRUD Management     │     │ • Shift Attendance    │
    │ • 4-Method MFS (COD,  │     │ • Order Status Update │     │ • Automated Delivery  │
-   │   bKash, Nagad, Rocket│     │ • Daily Revenue &     │     │   Earnings Calculator │
+   │  bKash, Nagad, Rocket)│     │ • Daily Revenue &     │     │   Earnings Calculator │
    │ • 5-Stage Order Track │     │   Sales Analytics     │     └───────────────────────┘
    │ • Dynamic PDF Receipt │     └───────────────────────┘
    └───────────────────────┘
