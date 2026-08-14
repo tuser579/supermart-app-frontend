@@ -1,4 +1,4 @@
-// app/_layout.tsx
+    // app/_layout.tsx
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';

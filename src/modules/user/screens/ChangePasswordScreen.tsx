@@ -20,7 +20,7 @@ export default function ChangePasswordScreen() {
   const [current, setCurrent] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState('');  
   const [loading, setLoading] = useState(false);
 
   const handleChange = async () => {
