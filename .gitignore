@@ -37,3 +37,10 @@ yarn-error.*
 # builds & binaries
 *.apk
 *.aab
+
+# temporary test files & cache
+chrome_tmp*
+tmp_*
+test_*
+report.html
+gen_pdf.js
